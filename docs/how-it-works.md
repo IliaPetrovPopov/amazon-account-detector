@@ -12,6 +12,9 @@ The full write-up behind the [README](../README.md): what the extension does, ho
 - **Changes while you were away.** When the account on a marketplace changed since you last opened the popup, it says so and names the account that was there before.
 - **Address bar.** Type `amz` and a space in Chrome's address bar to see every marketplace's account without opening anything. Add `de` or part of an email to filter.
 - **Toolbar badge.** The chosen marketplace's code: green when signed in, grey when not, amber when the answer is not current, red for the wrong account.
+- **Nicknames.** Name an account in Settings ("Main buyer", "Backup UK") and the name leads everywhere: popup, dropdown, board, timeline, badge, address bar and alerts. The email always stays next to it, because the email is what the brief asks the extension to show.
+- **Desktop alerts.** Off until you turn them on in Settings. Then a marketplace that signs out, or an account other than the pinned one signing in, raises a notification. Only a change alerts, so a routine refresh stays quiet, and a failed check is never reported as a sign-out. Clicking the alert opens that marketplace's sign-in page.
+- **History export.** 30 days of who was signed in when, as a CSV with one line per stretch of time, for questions like "which account placed that order?".
 
 ## How a check works
 
@@ -78,22 +81,28 @@ Checked in Chrome 156 with two test accounts on 5 November 2026:
 - **Trackerbot's look.** Blue, navy and white, Poppins for headings and Inter for everything else, both bundled so no page loads anything from the network. Light and dark mode follow the system.
 - **The account is the hero.** The popup splits an email at the @, so the part that tells accounts apart reads first. Initials and a colour make the same account recognisable across every surface.
 - **Colour has one job each.** Green, grey, amber and red only ever mean a state, and always come with a word. Account colours are violet, teal, magenta, blue and copper, chosen to stay clear of those. They were checked with a colour-blindness simulation (protanopia and deuteranopia): the first three stay distinct side by side, and every pair that can touch on the timeline does too.
-- **Motion only when something changed.** A row that updates gets a short highlight, a new account fades in, the check icon spins while a check runs. Nothing moves on its own, and with reduced motion turned on nothing moves at all.
+- **Quiet motion.** Buttons lift slightly under the pointer and settle when pressed, highlights fade instead of snapping, and a state's colour changes smoothly. The board and Settings settle in when they open, and moving between them in one tab crossfades (cross-document view transitions). A row that updates gets a short highlight, a new account fades in, the check icon spins while a check runs. Nothing moves on its own, and with reduced motion turned on nothing moves at all.
 - **A real dropdown.** The marketplace picker follows the WAI-ARIA select-only combobox pattern: arrow keys, Home and End, Enter, Escape, type to find (`d` for Germany), and screen readers hear each marketplace with its state.
-- **Accessible by test.** All text meets WCAG AA contrast (4.5:1) in both themes, and status dots and focus rings reach 3:1. A unit test reads the real CSS tokens to keep it that way; it caught two dark-mode colours during the redesign.
+- **Accessible by test.** All text meets WCAG AA contrast (4.5:1) in both themes, and status dots, focus rings, text-field borders and the alerts switch reach 3:1. A unit test reads the real CSS tokens to keep it that way; it caught two dark-mode colours during the redesign.
+
+<p align="center">
+  <img src="settings.png" width="640" alt="Settings: nicknames for each account next to its email, the desktop alerts switch, and the history export">
+</p>
+
+- **Settings stay small.** Three things only: names, alerts, history. A nickname is cleaned before it is stored (one line, at most 40 characters, no control characters or text-direction overrides), and Escape undoes an edit. The export guards every cell against spreadsheet formulas, so a phone-number account such as `+44 7700 900123` opens as text.
 
 ## Tests
 
 ```sh
-npm test            # 231 unit tests
-npm run e2e         # 37 scenarios: the built extension in a real Chrome, against a local fake Amazon
+npm test            # 267 unit tests
+npm run e2e         # 47 scenarios: the built extension in a real Chrome, against a local fake Amazon
 npm run verify      # types, unit tests, a fresh build, and a check that dist/ matches the source
 npm run showcase    # renders the screenshots from the real extension
 ```
 
-The unit tests cover the page classifier, the check flow, cookie signals, race handling, the history and timeline, account colours and pins, every dropdown key, the address bar, storage, colour contrast and every popup and board state.
+The unit tests cover the page classifier, the check flow, cookie signals, race handling, the history and timeline, account colours, pins and nicknames, alert rules, the CSV export, every dropdown key, the address bar, storage, colour contrast and every popup and board state.
 
-The end-to-end run loads `dist` into a headless Chrome for Testing. Its host rules send the five Amazon hostnames to a local fake server and every other hostname nowhere, so nothing reaches the internet. Its scenarios include the dropdown driven by real key presses, going offline, a challenge, an expired session, a slow reply that lands after logout, a stopped service worker, the wrong-account alarm, a change while the popup was closed, copy to clipboard, live board updates, timeline hover, the side-panel layout, very long emails and phone-number accounts, reduced motion, six account switches in one second, and an open Amazon tab that must keep the text typed into it. It ends by checking that no extension page or the service worker threw a single error. Branded Chrome ignores `--load-extension`, so point `CHROME_PATH` at Chrome for Testing or Chromium:
+The end-to-end run loads `dist` into a headless Chrome for Testing. Its host rules send the five Amazon hostnames to a local fake server and every other hostname nowhere, so nothing reaches the internet. Its scenarios include the dropdown driven by real key presses, going offline, a challenge, an expired session, a slow reply that lands after logout, a stopped service worker, the wrong-account alarm, a change while the popup was closed, copy to clipboard, live board updates, timeline hover, the side-panel layout, very long emails and phone-number accounts, reduced motion, six account switches in one second, and an open Amazon tab that must keep the text typed into it. For the extras it opens Settings from the popup, types nicknames and checks them on every surface, turns alerts on and off and checks each alert's text, and downloads the CSV and reads it back. It also checks that the board and Settings crossfade into each other, and that reduced motion turns that off. It ends by checking that no extension page or the service worker threw a single error. Branded Chrome ignores `--load-extension`, so point `CHROME_PATH` at Chrome for Testing or Chromium:
 
 ```sh
 CHROME_PATH="/path/to/Google Chrome for Testing" npm run e2e
@@ -106,8 +115,9 @@ Checked by hand on real Amazon: sign-in, a logout noticed by an already open pop
 | Permission | Why |
 | --- | --- |
 | `cookies` | Read each marketplace's auth cookie and hear about logins and logouts |
-| `storage` | Keep records, pins, account colours and the 7-day history in `chrome.storage.local`, which is never synced |
+| `storage` | Keep records, pins, account colours, nicknames and the 30-day history in `chrome.storage.local`, which is never synced |
 | `alarms` | Hourly refresh |
+| `notifications` | Desktop alerts, only after you turn them on in Settings |
 | `offscreen` | Parse HTML with `DOMParser` |
 | `sidePanel` | Dock the live board beside your tabs |
 | Host access | The five marketplaces only |
@@ -120,7 +130,8 @@ The address-bar keyword needs no permission. Each record holds the status, the e
 - "Signed in" means Amazon recognizes the session. Amazon may still ask for the password before it shows orders or account settings.
 - An account with no email, only a phone number, shows the phone number.
 - If Amazon changes its markup, checks report an unrecognised page instead of guessing.
-- The timeline starts when the extension is installed and keeps seven days.
+- History starts when the extension is installed and keeps 30 days. The board's timeline shows the last 24 hours.
+- An alert cannot tell a sign-out you did yourself from a session that ended on its own, so both alert. That is why alerts are off by default.
 - Fetching the sign-in page rewrites one of Amazon's sign-in cookies (`ap-fid`). That fetch only happens on a new session or once a day. Whether it can disturb a sign-in that is in progress in another tab at that exact moment was not tested.
 
 ## Project layout
@@ -132,11 +143,14 @@ src/check.ts            one check: cookie, account page, sign-in page
 src/classify.ts         page verdicts and email extraction
 src/service.ts          one check at a time per marketplace, late-reply guard, settle delay
 src/history.ts          who was signed in when, and the timeline segments
-src/identity.ts         account colours, initials and pins
+src/identity.ts         account colours, initials, pins and nicknames
+src/alerts.ts           when a change deserves a desktop alert, and what it says
+src/export.ts           the history as a CSV
 src/view.ts             what every state says, shared by popup, board, badge and address bar
 src/listbox.ts          the dropdown's keyboard behaviour
 src/popup.ts            the popup
 src/board.ts            the live board, in a tab or the side panel
+src/options.ts          Settings: nicknames, alerts and the history export
 src/omnibox.ts          address-bar suggestions
 static/                 manifest, pages, design tokens and icons
 test/                   unit tests

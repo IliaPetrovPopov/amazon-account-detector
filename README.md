@@ -12,8 +12,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Chrome-Manifest_V3-0065FD" alt="Chrome Manifest V3">
   <img src="https://img.shields.io/badge/TypeScript-strict-16203B" alt="TypeScript strict">
-  <img src="https://img.shields.io/badge/unit_tests-231-16A34A" alt="231 unit tests">
-  <img src="https://img.shields.io/badge/end--to--end-37_scenarios-16A34A" alt="37 end-to-end scenarios">
+  <img src="https://img.shields.io/badge/unit_tests-267-16A34A" alt="267 unit tests">
+  <img src="https://img.shields.io/badge/end--to--end-47_scenarios-16A34A" alt="47 end-to-end scenarios">
   <img src="https://img.shields.io/badge/runtime_dependencies-0-16203B" alt="No runtime dependencies">
 </p>
 
@@ -47,6 +47,7 @@ To build it yourself, with Node 22 or newer: `npm install`, then `npm run build`
 - **Wrong-account alarm:** pin the account a marketplace should use. The popup, the board and the toolbar badge turn red if another account is signed in.
 - **Account colours and initials,** the same on every screen, and a note when the account changed since you last looked.
 - **Toolbar badge** with the marketplace's state, and `amz` plus a space in the address bar for every account at once.
+- **Settings** (the sliders icon): nicknames for accounts, always shown next to the email; desktop alerts when a marketplace signs out or the wrong account signs in, off until you turn them on; and a CSV export of 30 days of history.
 
 ## How it works
 
@@ -57,6 +58,6 @@ The full write-up, with the reasons for each choice and what the real sites show
 ## Tests
 
 ```sh
-npm test       # 231 unit tests
-npm run e2e    # 37 scenarios in Chrome for Testing against a local fake Amazon (set CHROME_PATH)
+npm test       # 267 unit tests
+npm run e2e    # 47 scenarios in Chrome for Testing against a local fake Amazon (set CHROME_PATH)
 ```
