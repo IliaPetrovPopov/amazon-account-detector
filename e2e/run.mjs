@@ -1,6 +1,9 @@
 // End-to-end run of the built extension in a real Chrome, against a local fake Amazon.
 // Needs CHROME_PATH pointing at Chrome for Testing or Chromium.
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ACCOUNT_PAGE, EXTENSION_ORIGIN, SIGN_IN_PAGE, SITES, startHarness, waitFor } from './harness.mjs';
 
@@ -118,6 +121,8 @@ const boardState = (target) =>
       layout: document.body.className,
       rows: [...document.querySelectorAll('.row')].map((r) => ({
         id: r.dataset.id, account: r.dataset.account, status: r.dataset.status, tone: r.dataset.tone,
+        name: r.querySelector('.account-email').textContent,
+        alt: r.querySelector('.account-alt').hidden ? null : r.querySelector('.account-alt').textContent,
         segments: r.querySelectorAll('.segment').length,
         sub: r.querySelector('.account-sub').hidden ? null : r.querySelector('.account-sub').textContent,
         pinPressed: r.querySelector('.row-pin').getAttribute('aria-pressed'),
@@ -161,6 +166,88 @@ async function sawMotion(target, action, settle) {
   await watcher;
   return seen;
 }
+
+/** Attaches to a page the extension opened itself, such as Settings from the popup. */
+async function attach(targetId, { width = 1100, height = 900 } = {}) {
+  const { sessionId } = await h.browser.send('Target.attachToTarget', { targetId, flatten: true });
+  await h.browser.send('Runtime.enable', {}, sessionId);
+  await h.browser.send('Page.enable', {}, sessionId);
+  await h.browser.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
+  await h.browser.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId);
+  return { targetId, sessionId };
+}
+
+/** Runs code inside the extension's service worker. */
+async function workerEvaluate(expression) {
+  // A message wakes the worker if Chrome stopped it; it answers only "check" messages, so this one is ignored.
+  await h.evaluate(popup, `chrome.runtime.sendMessage({ type: 'wake' }).catch(() => null)`);
+  const worker = await waitFor(() => h.extensionWorker(), 'service worker');
+  const { sessionId } = await h.browser.send('Target.attachToTarget', { targetId: worker.targetId, flatten: true });
+  try {
+    const { result, exceptionDetails } = await h.browser.send(
+      'Runtime.evaluate',
+      { expression, awaitPromise: true, returnByValue: true },
+      sessionId,
+    );
+    if (exceptionDetails) throw new Error(`Worker script failed: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
+    return result.value;
+  } finally {
+    await h.browser.send('Target.detachFromTarget', { sessionId }).catch(() => undefined);
+  }
+}
+
+/** Headless Chrome cannot show desktop notifications, so the worker's calls are recorded instead. */
+const recordAlerts = () =>
+  workerEvaluate(`(() => {
+    globalThis.alertsSeen = [];
+    chrome.notifications.create = (id, options) => {
+      globalThis.alertsSeen.push({ id, title: options.title, message: options.message });
+      return Promise.resolve(id);
+    };
+    return true;
+  })()`);
+const alertsSeen = () => workerEvaluate('globalThis.alertsSeen ?? null');
+
+/** Replaces a field's text the way typing does. */
+async function typeInto(target, selector, text) {
+  await h.evaluate(target, `(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.focus(); field.select(); })()`);
+  await h.browser.send('Input.insertText', { text }, target.sessionId);
+}
+
+/** Selects a field's text and deletes it with a real Backspace. */
+async function clearField(target, selector) {
+  await h.evaluate(target, `(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.focus(); field.select(); })()`);
+  const base = { key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
+  await h.browser.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: ['deleteBackward'] }, target.sessionId);
+  await h.browser.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }, target.sessionId);
+  const left = await h.evaluate(target, `document.querySelector(${JSON.stringify(selector)}).value`);
+  if (left !== '') throw new Error(`Backspace left "${left}" in ${selector}`);
+}
+
+const settingsState = (target) =>
+  h.evaluate(
+    target,
+    `(() => ({
+      rows: [...document.querySelectorAll('.name-row')].map((r) => ({
+        key: r.dataset.key,
+        email: r.querySelector('.name-email').textContent,
+        where: r.querySelector('.name-where').textContent,
+        value: r.querySelector('input').value,
+        avatar: r.querySelector('.avatar').textContent,
+        color: r.querySelector('.avatar').style.getPropertyValue('--avatar-color').toUpperCase(),
+        saved: r.querySelector('.name-saved').classList.contains('is-visible'),
+      })),
+      empty: document.querySelector('.names-empty')?.textContent ?? null,
+      alerts: document.getElementById('alerts-switch').getAttribute('aria-checked'),
+      testDisabled: document.getElementById('test-alert').disabled,
+      history: document.getElementById('history-summary').textContent,
+      exportDisabled: document.getElementById('export').disabled,
+      announce: document.getElementById('announce').textContent,
+    }))()`,
+  );
+
+const nameField = (email) => `.name-row[data-key="${email}"] input`;
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // ---------- scenarios ----------
 
@@ -633,6 +720,179 @@ async function scenarios() {
     assert.equal(segment, PALETTE[1], 'the timeline uses the same colour as the avatar');
   });
 
+  // ---------- settings: nicknames and alerts ----------
+
+  let settings;
+
+  await step('settings: opens from the popup and lists every account in colour order', async () => {
+    const opener = await h.openPage(`${EXTENSION_ORIGIN}/popup.html`);
+    await popupReady(opener);
+    await click(opener, '#open-settings');
+    const target = await waitFor(async () => {
+      const { targetInfos } = await h.browser.send('Target.getTargets');
+      return targetInfos.find((t) => t.type === 'page' && t.url === `${EXTENSION_ORIGIN}/options.html`);
+    }, 'Settings tab');
+    await h.browser.send('Target.closeTarget', { targetId: opener.targetId }).catch(() => undefined);
+    settings = await attach(target.targetId);
+    await waitFor(
+      () => h.evaluate(settings, `document.readyState === 'complete' && !!document.getElementById('alerts-switch')`),
+      'Settings to load',
+    );
+    const state = await waitFor(async () => {
+      const s = await settingsState(settings);
+      return s.rows.length === 3 ? s : null;
+    }, 'accounts in Settings');
+    assert.deepEqual(state.rows.map((r) => r.email), ['alice@example.test', 'bob@example.test', 'carol@example.test']);
+    assert.deepEqual(state.rows.map((r) => r.color), PALETTE.slice(0, 3));
+    assert.equal(state.rows[0].where, 'Signed in on UK.');
+    assert.equal(state.rows[1].where, 'Signed in on IT.');
+    assert.match(state.rows[2].where, /^Last signed in today \d\d:\d\d\.$/);
+    assert.ok(state.rows.every((r) => r.value === ''), 'no nicknames yet');
+    assert.equal(state.alerts, 'false', 'alerts start off');
+    assert.equal(state.testDisabled, true);
+    assert.match(state.history, /^\d+ changes since \d\d:\d\d$/);
+    assert.equal(state.exportDisabled, false);
+  });
+
+  await step('nicknames: a name shows on every surface, and the email stays in view', async () => {
+    await typeInto(settings, nameField('alice@example.test'), 'Main buyer');
+    await press(settings, 'Enter');
+    await waitFor(async () => sameJson(await storage('accountNames'), { 'alice@example.test': 'Main buyer' }), 'nickname stored');
+    const saved = await waitFor(async () => {
+      const s = await settingsState(settings);
+      return s.rows[0].avatar === 'MB' ? s : null;
+    }, 'Settings to confirm');
+    assert.equal(saved.rows[0].saved, true);
+    assert.equal(saved.announce, 'Nickname saved: Main buyer');
+
+    await click(popup, '#combo');
+    await click(popup, '#option-co-uk');
+    const state = await waitFor(async () => {
+      const s = await popupState();
+      return s.primary === 'Main buyer' ? s : null;
+    }, 'popup to lead with the nickname');
+    assert.equal(state.secondary, 'alice@example.test', 'the whole email shows under the nickname');
+    assert.equal(state.avatar, 'MB');
+    assert.equal(state.account, 'amazon.co.uk: Signed in, Main buyer (alice@example.test)');
+    const option = state.options.find((o) => o.id === 'co.uk');
+    assert.equal(option.account, 'Main buyer');
+    assert.match(option.label, /Main buyer \(alice@example\.test\)/);
+    await waitFor(async () => /Signed in as Main buyer \(alice@example\.test\)/.test((await badge()).title), 'badge tooltip');
+
+    const shown = await waitFor(async () => {
+      const s = await boardState(board);
+      return rowOf(s, 'co.uk').name === 'Main buyer' ? s : null;
+    }, 'board to show the nickname');
+    assert.equal(rowOf(shown, 'co.uk').alt, 'alice@example.test');
+    assert.equal(rowOf(shown, 'co.uk').account, 'alice@example.test');
+    assert.ok(shown.accounts.some((item) => item.includes('Main buyer') && item.includes('alice@example.test')));
+  });
+
+  await step('alerts: off by default, so a sign-out stays quiet', async () => {
+    await recordAlerts();
+    await h.signOut('co.uk');
+    await recordWhere('co.uk', (r) => r.status === 'signed_out', 'co.uk signed out', 8000);
+    await sleep(500);
+    assert.deepEqual(await alertsSeen(), []);
+    await h.setAuthCookie('co.uk', 'token-alice');
+    await recordWhere('co.uk', (r) => r.email === 'alice@example.test', 'alice back on co.uk');
+  });
+
+  await step('alerts: once on, a sign-out raises one alert that names the account', async () => {
+    await click(settings, '#alerts-switch');
+    await waitFor(async () => (await storage('alertsEnabled')) === true, 'alerts stored as on');
+    assert.equal((await settingsState(settings)).testDisabled, false);
+    await recordAlerts();
+    await h.signOut('co.uk');
+    const seen = await waitFor(async () => {
+      const list = await alertsSeen();
+      return list?.length ? list : null;
+    }, 'an alert', 8000);
+    assert.deepEqual(seen, [
+      {
+        id: 'alert:co.uk',
+        title: 'Signed out on amazon.co.uk',
+        message: 'Main buyer (alice@example.test) is no longer signed in. Click to sign in again.',
+      },
+    ]);
+    await h.setAuthCookie('co.uk', 'token-alice');
+    await recordWhere('co.uk', (r) => r.email === 'alice@example.test', 'alice back on co.uk');
+    await sleep(300);
+    assert.equal((await alertsSeen()).length, 1, 'signing back in is not an alert');
+  });
+
+  await step('alerts: the wrong account raises one alert, a recheck of it stays quiet', async () => {
+    await h.evaluate(popup, `chrome.storage.local.set({ 'pin:co.uk': 'alice@example.test' })`);
+    await recordAlerts();
+    await h.setAuthCookie('co.uk', 'token-bob');
+    const seen = await waitFor(async () => {
+      const list = await alertsSeen();
+      return list?.length ? list : null;
+    }, 'a wrong-account alert', 8000);
+    assert.deepEqual(seen, [
+      {
+        id: 'alert:co.uk',
+        title: 'Wrong account on amazon.co.uk',
+        message: 'bob@example.test is signed in, not Main buyer (alice@example.test). Click to switch accounts.',
+      },
+    ]);
+    const started = Date.now();
+    await click(board, '.row[data-id="co.uk"] .row-check');
+    await recordWhere('co.uk', (r) => r.confirmedAt >= started, 'recheck of the wrong account');
+    await sleep(300);
+    assert.equal((await alertsSeen()).length, 1, 'the same wrong account alerts once');
+    await h.evaluate(popup, `chrome.storage.local.remove('pin:co.uk')`);
+    await h.setAuthCookie('co.uk', 'token-alice');
+    await recordWhere('co.uk', (r) => r.email === 'alice@example.test', 'alice back on co.uk');
+  });
+
+  await step('alerts: Settings sends a test alert, and turning alerts off silences them', async () => {
+    await h.evaluate(
+      settings,
+      `window.pageAlerts = []; chrome.notifications.create = (id, options) => { window.pageAlerts.push({ id, title: options.title }); return Promise.resolve(id); }`,
+    );
+    await click(settings, '#test-alert');
+    await waitFor(async () => (await h.evaluate(settings, 'window.pageAlerts.length')) === 1, 'test alert');
+    assert.deepEqual(await h.evaluate(settings, 'window.pageAlerts'), [{ id: 'alert:test', title: 'Alerts are on' }]);
+    assert.equal(await h.evaluate(settings, `document.getElementById('test-alert-label').textContent`), 'Test alert sent');
+    await click(settings, '#alerts-switch');
+    await waitFor(async () => (await storage('alertsEnabled')) === null, 'alerts off');
+    assert.equal((await settingsState(settings)).testDisabled, true);
+    await recordAlerts();
+    await h.signOut('co.uk');
+    await recordWhere('co.uk', (r) => r.status === 'signed_out', 'co.uk signed out', 8000);
+    await sleep(500);
+    assert.deepEqual(await alertsSeen(), [], 'no alert once turned off');
+    await h.setAuthCookie('co.uk', 'token-alice');
+    await recordWhere('co.uk', (r) => r.email === 'alice@example.test', 'alice back on co.uk');
+  });
+
+  await step('nicknames: cleaned before saving, Escape undoes an edit, clearing the field removes the name', async () => {
+    await typeInto(settings, nameField('bob@example.test'), `  Bob\u202E   the builder   ${'x'.repeat(40)}`);
+    await press(settings, 'Enter');
+    const expected = `Bob the builder ${'x'.repeat(24)}`;
+    await waitFor(async () => (await storage('accountNames'))?.['bob@example.test'] === expected, 'cleaned nickname stored');
+    assert.equal(await h.evaluate(settings, `document.querySelector(${JSON.stringify(nameField('bob@example.test'))}).value`), expected);
+
+    await typeInto(settings, nameField('alice@example.test'), 'Not saved');
+    await press(settings, 'Escape');
+    assert.equal(await h.evaluate(settings, `document.querySelector(${JSON.stringify(nameField('alice@example.test'))}).value`), 'Main buyer');
+    await sleep(300);
+    assert.equal((await storage('accountNames'))['alice@example.test'], 'Main buyer');
+
+    for (const email of ['bob@example.test', 'alice@example.test']) {
+      await clearField(settings, nameField(email));
+      await press(settings, 'Enter');
+    }
+    await waitFor(async () => sameJson(await storage('accountNames'), {}), 'nicknames removed');
+    await waitFor(async () => (await popupState()).primary === 'alice', 'popup back to the email');
+    assert.equal((await popupState()).avatar, 'A');
+    await waitFor(async () => rowOf(await boardState(board), 'co.uk').alt === null, 'board back to one line');
+    await click(popup, '#combo');
+    await click(popup, '#option-de');
+    await waitFor(async () => (await popupState()).code === 'DE', 'popup back on amazon.de');
+  });
+
   await step('reduced motion: nothing animates, everything still updates', async () => {
     const calm = await h.openPage(`${EXTENSION_ORIGIN}/popup.html`, { reducedMotion: true });
     await popupReady(calm);
@@ -712,6 +972,73 @@ async function scenarios() {
     await h.browser.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 900, deviceScaleFactor: 1, mobile: false }, board.sessionId);
     await waitFor(async () => /layout-narrow/.test((await boardState(board)).layout), 'narrow layout');
     assert.equal(await overflow(board), 0, 'narrow board');
+  });
+
+  await step('settings: long names and narrow windows never break the layout', async () => {
+    const long = 'alexandra.konstantinopoulou-papadimitriou@subdomain.example-company.co.uk';
+    await waitFor(async () => (await settingsState(settings)).rows.some((r) => r.email === long), 'long email in Settings');
+    const overflow = () => h.evaluate(settings, `document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+    assert.equal(await overflow(), 0, 'wide');
+    await h.browser.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 900, deviceScaleFactor: 1, mobile: false }, settings.sessionId);
+    await sleep(200);
+    assert.equal(await overflow(), 0, 'narrow');
+    const phone = (await settingsState(settings)).rows.find((r) => r.email === '+44 7700 900123');
+    assert.equal(phone.avatar, '', 'a phone account has no letters, so the avatar draws a person');
+    await h.browser.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false }, settings.sessionId);
+  });
+
+  await step('export: the CSV holds every stretch of history and is safe to open in a spreadsheet', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'amazon-detector-downloads-'));
+    try {
+      await h.browser.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: folder });
+      await click(settings, '#export');
+      const file = await waitFor(async () => (await readdir(folder)).find((name) => name.endsWith('.csv')), 'CSV download');
+      assert.match(file, /^amazon-accounts-\d{4}-\d\d-\d\d\.csv$/);
+      const csv = await readFile(join(folder, file), 'utf8');
+      assert.ok(csv.startsWith('\uFEFF'), 'byte order mark for Excel');
+      const lines = csv.slice(1).trimEnd().split('\r\n');
+      assert.equal(lines[0], '"Marketplace","State","Account","Nickname","From","To"');
+      let events = 0;
+      for (const site of SITES) events += (await storage(`history:${site}`)).length;
+      assert.equal(lines.length - 1, events, 'one line per recorded change');
+      assert.ok(lines.some((line) => line.startsWith(`"amazon.de","Signed in","'+44 7700 900123"`)), 'phone account kept as text');
+      assert.ok(lines.some((line) => line.startsWith('"amazon.it","Signed in","alexandra.konstantinopoulou')), 'long email');
+      assert.ok(lines.filter((line) => line.endsWith(',""')).length === SITES.length, 'each marketplace has one stretch still going on');
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
+  });
+
+  await step('motion: pages settle in, the board and Settings crossfade in one tab, reduced motion turns it off', async () => {
+    const pageAnimation = () => h.evaluate(settings, `getComputedStyle(document.querySelector('.page')).animationName`);
+    // The page about to be left reports whether Chrome will crossfade to the next one.
+    const watchLeave = () =>
+      h.evaluate(
+        settings,
+        `sessionStorage.removeItem('crossfade'); addEventListener('pageswap', (event) => sessionStorage.setItem('crossfade', String(Boolean(event.viewTransition))))`,
+      );
+    const crossfaded = () => h.evaluate(settings, `sessionStorage.getItem('crossfade')`);
+    const onBoard = () =>
+      waitFor(() => h.evaluate(settings, `location.pathname === '/board.html' && document.querySelectorAll('.row').length === 5`), 'board in this tab');
+
+    assert.equal(await pageAnimation(), 'page-in');
+    await watchLeave();
+    await click(settings, '#open-board');
+    await onBoard();
+    assert.equal(await crossfaded(), 'true', 'Settings to board crossfades');
+    assert.equal(await pageAnimation(), 'page-in');
+
+    await watchLeave();
+    await click(settings, '#open-settings');
+    await waitFor(() => h.evaluate(settings, `location.pathname === '/options.html' && document.querySelectorAll('.name-row').length > 0`), 'Settings again');
+    assert.equal(await crossfaded(), 'true', 'board to Settings crossfades');
+
+    await h.browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }, settings.sessionId);
+    assert.equal(await pageAnimation(), 'none', 'no settling in with reduced motion');
+    await watchLeave();
+    await click(settings, '#open-board');
+    await onBoard();
+    assert.equal(await crossfaded(), 'false', 'no crossfade with reduced motion');
   });
 
   await step('no uncaught errors in any extension page or the service worker', async () => {

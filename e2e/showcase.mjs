@@ -1,5 +1,5 @@
 // Renders the README images from the real extension against the fake Amazon:
-// the live board in light and dark, and the popup in its main states.
+// the live board in light and dark, the popup in its main states, and Settings.
 // Usage: CHROME_PATH=... npm run showcase   (SHOWCASE_OUT=some/dir to write elsewhere)
 import { mkdir, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -121,6 +121,15 @@ try {
     await h.evaluate(popup, `document.getElementById('combo').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))`);
     await sleep(300);
   });
+
+  // Settings, with a nickname given and alerts turned on.
+  await h.evaluate(control, `chrome.storage.local.set(${JSON.stringify({ accountNames: { [alice]: 'Main buyer' }, alertsEnabled: true })})`);
+  const settings = await h.openPage(`${EXTENSION_ORIGIN}/options.html`, { width: 880, height: 900, scale: 2 });
+  await waitFor(() => h.evaluate(settings, `document.querySelectorAll('.name-row').length === 3`), 'settings');
+  await sleep(400);
+  const bottom = await h.evaluate(settings, `Math.ceil(document.querySelector('.page').getBoundingClientRect().bottom)`);
+  await shot(settings, 'settings.png', { x: 0, y: 0, width: 880, height: bottom, scale: 1 });
+  await h.browser.send('Target.closeTarget', { targetId: settings.targetId });
 
   console.log(`Images written to ${OUT}/`);
 } finally {
