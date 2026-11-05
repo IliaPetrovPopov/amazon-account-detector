@@ -8,11 +8,13 @@ import {
   boardSummary,
   changeNote,
   clockTime,
+  dayAndTime,
   describe,
   emailLines,
   formatAge,
   heroText,
   isLastKnown,
+  listOf,
   lookOf,
 } from '../src/view';
 
@@ -229,6 +231,17 @@ group('boardRow', () => {
   it('dims answers that are not current', () => {
     expect(boardRow(signedIn({ confirmedAt: NOW - STALE_AFTER_MS - 1 }), de, NOW).dim).toBe(true);
   });
+
+  it('carries nicknames, and the sentence still names the email', () => {
+    const names = { 'user@example.com': 'Main buyer', 'other@example.com': 'Backup' };
+    const row = boardRow(signedIn(), de, NOW, 'other@example.com', names);
+    expect(row.name).toBe('Main buyer');
+    expect(row.account).toBe('user@example.com');
+    expect(row.label).toBe(
+      'amazon.de, Wrong account, Main buyer (user@example.com), pinned account is Backup (other@example.com), Checked 2 min ago',
+    );
+    expect(boardRow(signedOut(), de, NOW, null, names).name).toBeNull();
+  });
 });
 
 group('boardSummary', () => {
@@ -254,7 +267,19 @@ group('heroText', () => {
       primary: 'alice.lindqvist',
       secondary: '@example.com',
       email: 'alice.lindqvist@example.com',
+      name: null,
     });
+  });
+
+  it('leads with the nickname and keeps the whole email under it', () => {
+    const names = { 'alice.lindqvist@example.com': 'Main buyer' };
+    expect(heroText(signedIn({ email: 'Alice.Lindqvist@example.com' }), de, names)).toEqual({
+      primary: 'Main buyer',
+      secondary: 'Alice.Lindqvist@example.com',
+      email: 'Alice.Lindqvist@example.com',
+      name: 'Main buyer',
+    });
+    expect(heroText(signedOut(), de, names).primary).toBe('Not signed in');
   });
 
   it('shows a phone-number account on one line, with the marketplace under it', () => {
@@ -262,12 +287,13 @@ group('heroText', () => {
       primary: '+44 7700 900123',
       secondary: 'amazon.de',
       email: '+44 7700 900123',
+      name: null,
     });
   });
 
   it('names the state when there is no account to show', () => {
     expect(heroText(signedIn({ email: null }), de)).toMatchObject({ primary: 'Signed in', email: null });
-    expect(heroText(signedOut(), de)).toEqual({ primary: 'Not signed in', secondary: 'amazon.de', email: null });
+    expect(heroText(signedOut(), de)).toEqual({ primary: 'Not signed in', secondary: 'amazon.de', email: null, name: null });
     expect(heroText(EMPTY_RECORD, de).primary).toBe('Not checked yet');
     expect(heroText(record({ problem: 'network' }), de).primary).toBe('No answer from Amazon');
   });
@@ -318,6 +344,30 @@ group('badgeView', () => {
       'Amazon Account Detector\namazon.de: Wrong account as user@example.com\nPinned account: other@example.com',
     );
     expect(badgeView(signedOut(), de, NOW).title).toBe('Amazon Account Detector\namazon.de: Not signed in');
+  });
+
+  it('uses nicknames in the tooltip without dropping the email', () => {
+    const names = { 'user@example.com': 'Main buyer', 'other@example.com': 'Backup' };
+    expect(badgeView(signedIn(), de, NOW, 'other@example.com', names).title).toBe(
+      'Amazon Account Detector\namazon.de: Wrong account as Main buyer (user@example.com)\nPinned account: Backup (other@example.com)',
+    );
+  });
+});
+
+group('dayAndTime', () => {
+  it('says today, yesterday, or the date', () => {
+    expect(dayAndTime(new Date(2026, 10, 5, 9, 5).getTime(), NOW)).toBe('today 09:05');
+    expect(dayAndTime(new Date(2026, 10, 4, 23, 59).getTime(), NOW)).toBe('yesterday 23:59');
+    expect(dayAndTime(new Date(2026, 9, 28, 7, 0).getTime(), NOW)).toBe('28 Oct 07:00');
+  });
+});
+
+group('listOf', () => {
+  it('joins with commas and a final "and"', () => {
+    expect(listOf([])).toBe('');
+    expect(listOf(['UK'])).toBe('UK');
+    expect(listOf(['UK', 'IT'])).toBe('UK and IT');
+    expect(listOf(['UK', 'DE', 'IT'])).toBe('UK, DE and IT');
   });
 });
 

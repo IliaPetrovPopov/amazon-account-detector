@@ -62,12 +62,15 @@ group('text reaches WCAG AA (4.5:1) in both themes', () => {
   }
 });
 
-group('status dots, focus rings and pressed icons reach 3:1', () => {
+group('status dots, focus rings, field borders, the alerts switch and pressed icons reach 3:1', () => {
   const pairs: Array<[string, string]> = [
     ['ok', 'surface'],
     ['warn', 'surface'],
     ['alert', 'surface'],
+    // Also the border of text fields and the alerts switch when off.
     ['off', 'surface'],
+    // The alerts switch when on.
+    ['blue', 'surface'],
     ['focus', 'surface'],
     ['focus', 'canvas'],
     ['link', 'surface-3'],

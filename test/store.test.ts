@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe as group, expect, it, vi } from 'vitest';
 import {
+  alertStore,
   authStore,
   colorStore,
   historyStore,
   loadSelectedMarketplace,
+  nameStore,
   pinStore,
   touchesAccounts,
   touchesAuthState,
@@ -103,6 +105,8 @@ group('touchesAuthState', () => {
     expect(touchesAuthState(['pin:fr'])).toBe(true);
     expect(touchesAuthState(['history:it'])).toBe(true);
     expect(touchesAuthState(['accountColors'])).toBe(true);
+    expect(touchesAuthState(['accountNames'])).toBe(true);
+    expect(touchesAuthState(['alertsEnabled'])).toBe(false);
     expect(touchesAuthState(['selectedMarketplace'])).toBe(true);
     expect(touchesAuthState(['something-else'])).toBe(false);
     expect(touchesAuthState([])).toBe(false);
@@ -113,5 +117,27 @@ group('touchesAccounts', () => {
   it('reacts to pins only: records reach the colours through the service worker directly', () => {
     expect(touchesAccounts(['pin:de'])).toBe(true);
     expect(touchesAccounts(['auth:de', 'history:de', 'accountColors', 'selectedMarketplace'])).toBe(false);
+  });
+});
+
+group('nameStore', () => {
+  it('stores cleaned nicknames by normalised email and removes empty ones', async () => {
+    expect(await nameStore.get()).toEqual({});
+    expect(await nameStore.set('Alice@Example.test', '  Main  buyer ')).toEqual({ 'alice@example.test': 'Main buyer' });
+    await nameStore.set('bob@example.test', 'Backup');
+    expect(storage.data.get('accountNames')).toEqual({ 'alice@example.test': 'Main buyer', 'bob@example.test': 'Backup' });
+    await nameStore.set('alice@example.test', '');
+    expect(await nameStore.get()).toEqual({ 'bob@example.test': 'Backup' });
+  });
+});
+
+group('alertStore', () => {
+  it('is off until turned on, and turning it off leaves nothing behind', async () => {
+    expect(await alertStore.enabled()).toBe(false);
+    await alertStore.set(true);
+    expect(await alertStore.enabled()).toBe(true);
+    await alertStore.set(false);
+    expect(await alertStore.enabled()).toBe(false);
+    expect(storage.data.has('alertsEnabled')).toBe(false);
   });
 });

@@ -70,6 +70,12 @@ group('appendHistory', () => {
     expect(appendHistory(start, EMPTY_RECORD, NOW + 1)).toEqual(start);
   });
 
+  it('keeps 30 days, long enough to look up an order for a return', () => {
+    expect(HISTORY_RETENTION_MS).toBe(30 * 24 * HOUR);
+    const monthOld: HistoryEvent = { at: NOW - 29 * 24 * HOUR, email: 'alice@example.test' };
+    expect(appendHistory([monthOld], bob, NOW)).toEqual([monthOld, { at: NOW, email: 'bob@example.test' }]);
+  });
+
   it('forgets events older than the retention window', () => {
     const old: HistoryEvent = { at: NOW - HISTORY_RETENTION_MS - 1, email: 'alice@example.test' };
     const recent: HistoryEvent = { at: NOW - HOUR, email: 'bob@example.test' };

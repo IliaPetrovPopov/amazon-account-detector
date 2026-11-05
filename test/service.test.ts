@@ -121,11 +121,11 @@ group('createAuthService', () => {
     expect(check.mock.calls[0]).toEqual([expect.objectContaining({ id: 'de' }), EMPTY_RECORD, { force: true }]);
   });
 
-  it('runs the after-store step with the stored record', async () => {
+  it('runs the after-store step with the stored record and the one it replaced', async () => {
     const onStored = vi.fn(async () => undefined);
     const service = createAuthService({ store: makeStore(), check: async () => signedIn('a@example.com'), onStored });
     await service.request('de');
-    expect(onStored).toHaveBeenCalledWith('de', signedIn('a@example.com'));
+    expect(onStored).toHaveBeenCalledWith('de', signedIn('a@example.com'), EMPTY_RECORD);
   });
 
   it('skips the after-store step when nothing changed', async () => {
@@ -154,7 +154,7 @@ group('createAuthService', () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(onStored).toHaveBeenCalledTimes(1);
-    expect(onStored).toHaveBeenCalledWith('de', signedOut);
+    expect(onStored).toHaveBeenCalledWith('de', signedOut, EMPTY_RECORD);
   });
 
   it('a failing after-store step does not break the check', async () => {

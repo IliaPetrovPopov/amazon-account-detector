@@ -1,12 +1,18 @@
 import { describe as group, expect, it } from 'vitest';
 import {
   ACCOUNT_COLORS,
+  NAME_MAX_LENGTH,
   accountColor,
+  accountLabel,
   accountsInOrder,
   assignColors,
+  cleanName,
+  initials,
   monogram,
+  nameFor,
   pinState,
   sameColors,
+  withName,
 } from '../src/identity';
 
 function luminance(hex: string): number {
@@ -149,5 +155,55 @@ group('pinState', () => {
 
   it('flags a different account', () => {
     expect(pinState('alice@example.test', 'bob@example.test')).toBe('mismatch');
+  });
+});
+
+group('cleanName', () => {
+  it('keeps one tidy line', () => {
+    expect(cleanName('  Main   buyer  ')).toBe('Main buyer');
+    expect(cleanName('Main\nbuyer\tUK')).toBe('Main buyer UK');
+    expect(cleanName('   ')).toBe('');
+  });
+
+  it('drops control characters and direction overrides that could disguise the text', () => {
+    expect(cleanName('Bob\u202E  the\u0007 builder')).toBe('Bob the builder');
+    expect(cleanName('\u2066Shop\u2069')).toBe('Shop');
+  });
+
+  it('keeps at most 40 characters, never splitting an emoji or an accented letter', () => {
+    expect(cleanName('x'.repeat(60))).toHaveLength(NAME_MAX_LENGTH);
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+    const capped = cleanName(`${'a'.repeat(39)}${family}tail`);
+    expect(capped.endsWith(family)).toBe(true);
+    expect(cleanName('Zoë Ølstad')).toBe('Zoë Ølstad');
+  });
+});
+
+group('nicknames', () => {
+  const names = { 'alice@example.com': 'Main buyer' };
+
+  it('are found by email whatever its case', () => {
+    expect(nameFor(names, 'Alice@Example.com')).toBe('Main buyer');
+    expect(nameFor(names, 'bob@example.com')).toBeNull();
+    expect(nameFor(names, null)).toBeNull();
+  });
+
+  it('never replace the email in a sentence', () => {
+    expect(accountLabel(names, 'alice@example.com')).toBe('Main buyer (alice@example.com)');
+    expect(accountLabel(names, 'bob@example.com')).toBe('bob@example.com');
+  });
+
+  it('are set cleaned, and removed when nothing is left', () => {
+    expect(withName({}, 'Bob@Example.com', '  Backup  ')).toEqual({ 'bob@example.com': 'Backup' });
+    expect(withName(names, 'alice@example.com', '   ')).toEqual({});
+    expect(withName(names, 'alice@example.com', 'UK account')).toEqual({ 'alice@example.com': 'UK account' });
+    expect(names).toEqual({ 'alice@example.com': 'Main buyer' });
+  });
+
+  it('give avatars their initials, digits included', () => {
+    expect(initials('Main buyer')).toBe('MB');
+    expect(initials('Buyer 3')).toBe('B3');
+    expect(initials('über konto')).toBe('ÜK');
+    expect(initials('\u{1F6D2}')).toBe('');
   });
 });

@@ -53,6 +53,16 @@ group('omniboxSuggestions', () => {
     expect(omniboxSuggestions(rows, 'alice fr')).toEqual([]);
   });
 
+  it('shows a nickname with the email dimmed after it, and finds accounts by nickname', () => {
+    const names = { 'alice@example.test': 'Main <buyer>' };
+    const named = MARKETPLACE_IDS.map((id) => boardRow(records[id] ?? EMPTY_RECORD, MARKETPLACES[id], NOW, null, names));
+    const [uk] = omniboxSuggestions(named, 'uk');
+    expect(uk?.description).toBe(
+      '<match>UK</match>  <url>amazon.co.uk</url>  Signed in  Main &lt;buyer&gt; <dim>alice@example.test</dim>  <dim>checked 14:29</dim>',
+    );
+    expect(omniboxSuggestions(named, 'main').map((s) => s.content)).toEqual(['amazon.co.uk', 'amazon.it']);
+  });
+
   it('cannot be broken by markup in an account name', () => {
     const tricky = boardRow(signedIn('a<b>&c@example.test'), MARKETPLACES.de, NOW);
     expect(omniboxSuggestions([tricky], '')[0]?.description).toContain('a&lt;b&gt;&amp;c@example.test');
