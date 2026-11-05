@@ -68,7 +68,11 @@
 
   --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Motion: short and quiet. Things ease out, nothing bounces. */
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-hover: 0 6px 16px -8px rgb(22 32 59 / 0.28), 0 1px 2px rgb(22 32 59 / 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -103,6 +107,7 @@
     --alert-border: #5a3245;
 
     --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-hover: 0 8px 18px -8px rgb(0 0 0 / 0.7), 0 1px 2px rgb(0 0 0 / 0.3);
     --shadow-pop: 0 20px 44px -12px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.04);
     --hatch: rgb(154 171 200 / 0.3);
   }
@@ -195,13 +200,30 @@ p {
   white-space: nowrap;
   cursor: pointer;
   box-shadow: var(--shadow-raised);
-  transition: background-color 120ms, border-color 120ms, color 120ms;
+  transition:
+    background-color 160ms var(--ease-standard),
+    border-color 160ms var(--ease-standard),
+    color 160ms var(--ease-standard),
+    box-shadow 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
 }
 .button:hover {
   background: var(--surface-2);
 }
 .button:active {
   background: var(--surface-3);
+}
+/* A slight lift under the pointer, and a press that settles it back. */
+@media (hover: hover) {
+  .button:not(:disabled):hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+  }
+}
+.button:not(:disabled):active {
+  box-shadow: var(--shadow-raised);
+  transform: none;
+  transition-duration: 80ms;
 }
 .button:disabled {
   color: var(--text-2);
@@ -253,11 +275,19 @@ p {
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
-  transition: background-color 120ms, color 120ms;
+  transition:
+    background-color 160ms var(--ease-standard),
+    color 160ms var(--ease-standard);
 }
 .icon-button:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+.icon-button .icon {
+  transition: transform 160ms var(--ease-out);
+}
+.icon-button:not(:disabled):active .icon {
+  transform: scale(0.88);
 }
 .icon-button:active {
   background: var(--surface-3);
@@ -283,11 +313,14 @@ p {
   background: none;
   color: var(--link);
   font-weight: 550;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
   cursor: pointer;
+  transition: text-decoration-color 160ms var(--ease-standard);
 }
 .text-button:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-color: currentColor;
 }
 
 /* ---------- Marketplace code ---------- */
@@ -327,6 +360,9 @@ p {
   font: 600 calc(var(--size) * 0.38) / 1 var(--font-body);
   letter-spacing: 0.02em;
   user-select: none;
+  transition:
+    background-color 240ms var(--ease-standard),
+    opacity 200ms var(--ease-standard);
 }
 .avatar .icon {
   width: calc(var(--size) * 0.5);
@@ -347,6 +383,7 @@ p {
   height: 8px;
   border-radius: 50%;
   background: var(--off);
+  transition: background-color 240ms var(--ease-standard);
 }
 [data-tone='ok'] > .dot,
 .dot[data-tone='ok'] {
@@ -373,6 +410,9 @@ p {
   font-weight: 550;
   font-size: 12.5px;
   white-space: nowrap;
+  transition:
+    background-color 240ms var(--ease-standard),
+    color 240ms var(--ease-standard);
 }
 .pill .dot {
   width: 7px;
@@ -427,6 +467,52 @@ p {
 }
 .callout-info > .icon {
   color: var(--link);
+}
+
+/* ---------- Page motion ---------- */
+
+/*
+ * Full pages (the board and Settings) settle in once when they open, and moving between them in
+ * the same tab crossfades. A callout fades in when it appears. All of it only when the person
+ * has not asked for reduced motion. The crossfade's opt-in sits inline in those two pages, not
+ * here: Chrome can show an extension page before this file arrives, and would then cancel it.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: 140ms var(--ease-standard) both fade-out;
+  }
+  ::view-transition-new(root) {
+    animation: 220ms var(--ease-out) 60ms both fade-in;
+  }
+  .page {
+    animation: page-in 320ms var(--ease-out) backwards;
+  }
+  .callout:not([hidden]) {
+    animation: callout-in 220ms var(--ease-out) backwards;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes callout-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

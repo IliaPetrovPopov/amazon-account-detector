@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Inline, so Chrome knows about the crossfade before the page first renders. -->
+    <style>@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }</style>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings - Account Detector</title>
+    <link rel="icon" href="icons/icon-32.png" />
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <div class="brand">
+          <img src="icons/icon-128.png" width="28" height="28" alt="" />
+          <span class="brand-name">Account Detector</span>
+        </div>
+        <a class="button" id="open-board" href="board.html">Live board</a>
+      </header>
+
+      <div class="heading">
+        <h1>Settings</h1>
+        <p class="lede">Nicknames, alerts and history. All of it stays in this browser.</p>
+      </div>
+
+      <section class="section" aria-labelledby="names-title">
+        <h2 id="names-title">Account names</h2>
+        <p class="section-help" id="names-help">Give each account a name you will recognise, up to 40 characters. The email still shows next to it.</p>
+        <ul class="card names" id="names"></ul>
+      </section>
+
+      <section class="section" aria-labelledby="alerts-title">
+        <h2 id="alerts-title">Alerts</h2>
+        <div class="card">
+          <div class="setting">
+            <div>
+              <p class="setting-title" id="alerts-label">Desktop alerts</p>
+              <p class="setting-help" id="alerts-help">
+                A notification when a marketplace signs out, or when an account other than the pinned one signs in.
+                Clicking it opens that marketplace's sign-in page.
+              </p>
+            </div>
+            <button
+              class="switch"
+              id="alerts-switch"
+              type="button"
+              role="switch"
+              aria-checked="false"
+              aria-labelledby="alerts-label"
+              aria-describedby="alerts-help"
+            >
+              <span class="switch-thumb"></span>
+            </button>
+          </div>
+          <div class="setting-foot">
+            <button class="button" id="test-alert" type="button" disabled><span id="test-alert-label">Send a test alert</span></button>
+            <p class="setting-note">Nothing appears? Allow notifications for Chrome in your system settings.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="history-title">
+        <h2 id="history-title">History</h2>
+        <div class="card">
+          <div class="setting">
+            <div>
+              <p class="setting-title" id="history-summary">No history yet</p>
+              <p class="setting-help">
+                Who was signed in when, on every marketplace, kept for 30 days on this computer. The export has one line per
+                stretch of time, ready for Excel or Google Sheets.
+              </p>
+            </div>
+            <button class="button" id="export" type="button" disabled><span>Export CSV</span></button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <p>Nicknames, alerts and history are kept only in this browser and are never sent anywhere.</p>
+      </footer>
+    </div>
+
+    <p class="sr-only" id="announce" aria-live="polite"></p>
+    <script src="options.js"></script>
+  </body>
+</html>

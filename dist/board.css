@@ -34,6 +34,12 @@ body {
   letter-spacing: -0.005em;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .check-all {
   min-height: 38px;
 }
@@ -99,6 +105,7 @@ h1 {
   position: relative;
   min-height: 72px;
   border-bottom: 1px solid var(--border);
+  transition: background-color 160ms var(--ease-standard);
 }
 .layout-wide .row {
   padding-top: 14px;
@@ -139,6 +146,19 @@ h1 {
   color: var(--text-2);
   font-size: 12.5px;
   line-height: 1.4;
+}
+
+.account-alt {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account .account-alt {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .account-email {
@@ -447,6 +467,12 @@ h1 {
   pointer-events: none;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .tooltip:not([hidden]) {
+    animation: fade-in 120ms var(--ease-out);
+  }
+}
+
 .tooltip-who {
   display: flex;
   align-items: center;
@@ -456,6 +482,11 @@ h1 {
 }
 .tooltip-who .avatar {
   --size: 18px;
+}
+
+.tooltip-email {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
 }
 
 .tooltip-when {

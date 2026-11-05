@@ -50,10 +50,18 @@ body {
   box-shadow: var(--shadow-raised);
   cursor: pointer;
   user-select: none;
-  transition: border-color 120ms, box-shadow 120ms;
+  transition:
+    border-color 160ms var(--ease-standard),
+    box-shadow 160ms var(--ease-standard),
+    background-color 160ms var(--ease-standard);
 }
 .select-trigger:hover {
   border-color: color-mix(in srgb, var(--border-strong) 55%, var(--text-2));
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+}
+/* The chevron leans toward the list it opens. */
+.select-trigger[aria-expanded='false']:hover .select-chevron {
+  transform: translateY(1px);
 }
 .select-trigger:focus-visible {
   outline: none;
@@ -115,6 +123,7 @@ body {
   padding: 8px 9px;
   border-radius: 8px;
   cursor: pointer;
+  transition: background-color 120ms var(--ease-standard);
 }
 .option.is-active {
   background: var(--surface-2);
@@ -251,6 +260,18 @@ body {
 .alert-who .avatar,
 .change-before .avatar {
   --size: 20px;
+}
+
+/* An account in a callout: the nickname over the email, like the main view. */
+.who {
+  display: grid;
+  min-width: 0;
+}
+.who-email {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 450;
+  overflow-wrap: anywhere;
 }
 
 .change-icon,

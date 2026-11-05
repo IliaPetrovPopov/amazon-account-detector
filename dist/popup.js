@@ -2,7 +2,7 @@
 (() => {
   // src/history.ts
   var HOUR = 36e5;
-  var HISTORY_RETENTION_MS = 7 * 24 * HOUR;
+  var HISTORY_RETENTION_MS = 30 * 24 * HOUR;
   var TIMELINE_WINDOW_MS = 24 * HOUR;
   function identityOf(record) {
     if (record.problem !== null && record.problem !== "email_unavailable") return void 0;
@@ -37,6 +37,32 @@
     const words = local.split(/[^\p{L}]+/u).filter(Boolean);
     return words.slice(0, 2).map((word) => Array.from(word)[0] ?? "").join("").toLocaleUpperCase();
   }
+  function initials(name) {
+    return name.split(/[^\p{L}\p{N}]+/u).filter(Boolean).slice(0, 2).map((word) => Array.from(word)[0] ?? "").join("").toLocaleUpperCase();
+  }
+  var NAME_MAX_LENGTH = 40;
+  var UNSAFE_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+  function cleanName(raw) {
+    const text = raw.replace(/\s+/g, " ").replace(UNSAFE_CHARACTERS, "").replace(/ {2,}/g, " ").trim();
+    const characters = [...new Intl.Segmenter(void 0, { granularity: "grapheme" }).segment(text)].map((part) => part.segment);
+    return characters.slice(0, NAME_MAX_LENGTH).join("").trim();
+  }
+  function nameFor(names2, email) {
+    if (!email) return null;
+    return names2[accountKey(email)] || null;
+  }
+  function accountLabel(names2, email) {
+    const name = nameFor(names2, email);
+    return name ? `${name} (${email})` : email;
+  }
+  function withName(names2, email, raw) {
+    const key = accountKey(email);
+    const name = cleanName(raw);
+    const next = { ...names2 };
+    delete next[key];
+    if (name) next[key] = name;
+    return next;
+  }
   function pinState(pin, signedInEmail) {
     if (!pin) return "none";
     if (!signedInEmail) return "none";
@@ -70,7 +96,9 @@
     alert: "M14.5 12L9.2 2.7a1.3 1.3 0 0 0-2.3 0L1.5 12a1.3 1.3 0 0 0 1.2 2h10.7a1.3 1.3 0 0 0 1.1-2zM8 6v2.7M8 11.3h.01",
     info: "M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM8 7.5v3.5M8 5h.01",
     user: "M8 8a2.75 2.75 0 1 0 0-5.5A2.75 2.75 0 0 0 8 8zM3 14c.7-2.6 2.7-4 5-4s4.3 1.4 5 4",
-    history: "M2 8a6 6 0 1 0 6-6 6.5 6.5 0 0 0-4.49 1.83L2 5.3M2 2v3.3h3.3M8 4.7V8l2.7 1.3"
+    history: "M2 8a6 6 0 1 0 6-6 6.5 6.5 0 0 0-4.49 1.83L2 5.3M2 2v3.3h3.3M8 4.7V8l2.7 1.3",
+    settings: "M2.5 5h2M7.5 5h6M2.5 11h6M11.5 11h2M6 3.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM10 9.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z",
+    download: "M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"
   };
   function icon(name, className = "") {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -89,9 +117,9 @@
     if (current) current.replaceWith(next);
     else host.prepend(next);
   }
-  function paintAvatar(host, email, color) {
-    const letters = email ? monogram(email) : "";
-    const key = `${email ?? ""}|${color ?? ""}`;
+  function paintAvatar(host, email, color, name = null) {
+    const letters = email ? name && initials(name) || monogram(email) : "";
+    const key = `${email ?? ""}|${color ?? ""}|${name ?? ""}`;
     if (host.dataset.key === key) return;
     host.dataset.key = key;
     host.classList.toggle("avatar-empty", !email);
@@ -99,10 +127,16 @@
     else host.style.removeProperty("--avatar-color");
     host.replaceChildren(letters ? letters : icon("user"));
   }
-  function avatar(email, color, className = "") {
-    const host = el("span", `avatar${className ? ` ${className}` : ""}`);
+  function avatar(email, color, name = null) {
+    const host = el("span", "avatar");
     host.setAttribute("aria-hidden", "true");
-    paintAvatar(host, email, color);
+    paintAvatar(host, email, color, name);
+    return host;
+  }
+  function accountName(email, name, className = "") {
+    const host = el("span", `who${className ? ` ${className}` : ""}`);
+    if (name) host.append(el("span", "who-name", name), el("span", "sr-only", ", "), el("span", "who-email", email));
+    else host.append(el("span", "who-name", email));
     return host;
   }
   var prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -220,6 +254,7 @@
   // src/store.ts
   var SELECTED_KEY = "selectedMarketplace";
   var COLORS_KEY = "accountColors";
+  var NAMES_KEY = "accountNames";
   var authKey = (id) => `auth:${id}`;
   var pinKey = (id) => `pin:${id}`;
   async function readAll(keyOf, fallback) {
@@ -260,6 +295,18 @@
       await chrome.storage.local.set({ [COLORS_KEY]: slots });
     }
   };
+  var nameStore = {
+    async get() {
+      const found = await chrome.storage.local.get(NAMES_KEY);
+      return found[NAMES_KEY] ?? {};
+    },
+    /** Saves a cleaned nickname, or removes it when nothing is left after cleaning. Returns what was stored. */
+    async set(email, raw) {
+      const next = withName(await nameStore.get(), email, raw);
+      await chrome.storage.local.set({ [NAMES_KEY]: next });
+      return next;
+    }
+  };
   async function loadSelectedMarketplace() {
     const found = await chrome.storage.local.get(SELECTED_KEY);
     const value = found[SELECTED_KEY];
@@ -270,7 +317,7 @@
   }
   function touchesAuthState(changedKeys) {
     return changedKeys.some(
-      (key) => key === SELECTED_KEY || key === COLORS_KEY || key.startsWith("auth:") || key.startsWith("pin:") || key.startsWith("history:")
+      (key) => key === SELECTED_KEY || key === COLORS_KEY || key === NAMES_KEY || key.startsWith("auth:") || key.startsWith("pin:") || key.startsWith("history:")
     );
   }
 
@@ -364,14 +411,17 @@
       pin: { state: pinned, email: pin }
     };
   }
-  function heroText(record, m) {
+  function heroText(record, m, names2 = {}) {
     if (record.status === "signed_in" && record.email) {
+      const name = nameFor(names2, record.email);
+      if (name) return { primary: name, secondary: record.email, email: record.email, name };
       const [local, domain] = emailLines(record.email);
-      return { primary: local, secondary: domain || m.domain, email: record.email };
+      return { primary: local, secondary: domain || m.domain, email: record.email, name: null };
     }
-    if (record.status === "signed_in") return { primary: "Signed in", secondary: "Amazon did not show the email", email: null };
-    if (record.status === "signed_out") return { primary: "Not signed in", secondary: m.domain, email: null };
-    return { primary: record.problem ? "No answer from Amazon" : "Not checked yet", secondary: m.domain, email: null };
+    const none = { email: null, name: null };
+    if (record.status === "signed_in") return { primary: "Signed in", secondary: "Amazon did not show the email", ...none };
+    if (record.status === "signed_out") return { primary: "Not signed in", secondary: m.domain, ...none };
+    return { primary: record.problem ? "No answer from Amazon" : "Not checked yet", secondary: m.domain, ...none };
   }
   function lookOf(record) {
     return identityOf(record) ?? null;
@@ -383,10 +433,10 @@
     if (current.email === null) return { text: "Signed out since you last looked", before: previous.email };
     return { text: "Account changed since you last looked", before: previous.email };
   }
-  function boardRow(record, m, now, pin = null) {
+  function boardRow(record, m, now, pin = null, names2 = {}) {
     const view = describe(record, m, now, false, pin);
     const email = record.status === "signed_in" ? record.email : null;
-    const pinNote = view.pin.state === "mismatch" ? `pinned account is ${pin}` : null;
+    const pinNote = view.pin.state === "mismatch" && pin ? `pinned account is ${accountLabel(names2, pin)}` : null;
     return {
       id: m.id,
       code: m.code,
@@ -394,13 +444,14 @@
       domain: m.domain,
       tone: view.tone,
       account: email ?? "",
+      name: nameFor(names2, email),
       status: view.status,
       dim: isLastKnown(record, now),
       freshness: view.freshness,
       time: view.time,
       pin,
       pinState: view.pin.state,
-      label: [m.domain, view.headline, email, pinNote, view.freshness].filter(Boolean).join(", ")
+      label: [m.domain, view.headline, email && accountLabel(names2, email), pinNote, view.freshness].filter(Boolean).join(", ")
     };
   }
   function emailLines(email) {
@@ -450,6 +501,7 @@
   var records = Object.fromEntries(MARKETPLACE_IDS.map((id) => [id, EMPTY_RECORD]));
   var pins = Object.fromEntries(MARKETPLACE_IDS.map((id) => [id, null]));
   var colors = {};
+  var names = {};
   var checking = /* @__PURE__ */ new Set();
   var notes = {};
   var shownKey = "";
@@ -568,15 +620,15 @@
     for (const id of MARKETPLACE_IDS) {
       const option = options.get(id);
       if (!option) continue;
-      const row = boardRow(records[id], MARKETPLACES[id], now, pins[id]);
+      const row = boardRow(records[id], MARKETPLACES[id], now, pins[id], names);
       const email = row.account || null;
       option.element.setAttribute("aria-selected", String(id === selected));
       option.element.setAttribute("aria-label", `${row.country}, ${row.label}`);
       option.element.dataset.tone = row.tone;
       option.dot.dataset.tone = row.tone;
       option.avatar.hidden = email === null;
-      paintAvatar(option.avatar, email, colorOf(email));
-      option.account.textContent = email ? emailLines(email)[0] : row.status;
+      paintAvatar(option.avatar, email, colorOf(email), row.name);
+      option.account.textContent = email ? row.name ?? emailLines(email)[0] : row.status;
       option.element.querySelector(".code")?.classList.toggle("is-current", id === selected);
       if (id === selected) comboDot.dataset.tone = row.tone;
     }
@@ -588,13 +640,14 @@
     const pin = pins[selected];
     const isChecking = checking.has(selected);
     const view = describe(record, m, now, isChecking, pin);
-    const hero = heroText(record, m);
+    const hero = heroText(record, m, names);
     renderCombo(now);
-    paintAvatar(avatarHost, hero.email, colorOf(hero.email));
+    paintAvatar(avatarHost, hero.email, colorOf(hero.email), hero.name);
     primary.textContent = hero.primary;
     secondary.textContent = hero.secondary;
     identity.classList.toggle("is-faded", hero.email !== null && view.accountMuted);
-    account.textContent = `${m.domain}: ${view.headline}${hero.email ? `, ${hero.email}` : ""}`;
+    identity.classList.toggle("has-name", hero.name !== null);
+    account.textContent = `${m.domain}: ${view.headline}${hero.email ? `, ${accountLabel(names, hero.email)}` : ""}`;
     statusPill.dataset.tone = view.tone;
     statusText.textContent = view.status;
     freshness.textContent = view.freshness;
@@ -609,13 +662,17 @@
     if (note) {
       changeText.textContent = note.text;
       changeBefore.hidden = !note.before;
-      if (note.before) changeBefore.replaceChildren("Before:", avatar(note.before, colorOf(note.before)), el("span", "", note.before));
+      if (note.before) {
+        const name = nameFor(names, note.before);
+        changeBefore.replaceChildren("Before:", avatar(note.before, colorOf(note.before), name), accountName(note.before, name));
+      }
     }
     const mismatch = view.pin.state === "mismatch" && view.pin.email;
     alertBox.hidden = !mismatch;
     if (mismatch && view.pin.email) {
       alertText.textContent = `${m.domain} is pinned to`;
-      alertWho.replaceChildren(avatar(view.pin.email, colorOf(view.pin.email)), el("span", "alert-email", view.pin.email));
+      const name = nameFor(names, view.pin.email);
+      alertWho.replaceChildren(avatar(view.pin.email, colorOf(view.pin.email), name), accountName(view.pin.email, name, "alert-email"));
     }
     noticeBox.hidden = view.notice === null;
     setText(notice, view.notice);
@@ -646,7 +703,7 @@
     }
   }
   async function reload() {
-    [records, pins, colors] = await Promise.all([authStore.getAll(), pinStore.getAll(), colorStore.get()]);
+    [records, pins, colors, names] = await Promise.all([authStore.getAll(), pinStore.getAll(), colorStore.get(), nameStore.get()]);
   }
   async function requestCheck(id, force) {
     const showChecking = setTimeout(() => {
@@ -675,6 +732,7 @@
   function buildTools() {
     byId("open-board").append(icon("board"));
     byId("open-panel").append(icon("panel"));
+    byId("open-settings").append(icon("settings"));
     byId("combo-chevron").append(icon("chevron"));
     byId("change-icon").append(icon("history"));
     byId("alert-icon").append(icon("alert"));
@@ -684,6 +742,9 @@
     pinButton.prepend(icon("pin"));
     byId("open-board").addEventListener("click", () => {
       void chrome.tabs.create({ url: chrome.runtime.getURL("board.html") }).then(() => window.close());
+    });
+    byId("open-settings").addEventListener("click", () => {
+      void chrome.runtime.openOptionsPage().then(() => window.close());
     });
     byId("open-panel").addEventListener("click", () => {
       if (windowId === void 0) return;
