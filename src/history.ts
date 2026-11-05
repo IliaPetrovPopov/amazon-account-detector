@@ -1,8 +1,9 @@
 import type { AuthRecord, HistoryEvent } from './types';
 
 const HOUR = 3_600_000;
-export const HISTORY_RETENTION_MS = 7 * 24 * HOUR;
-export const HISTORY_MAX_EVENTS = 200;
+/** Long enough to answer "which account placed that order?" for a return or a dispute. */
+export const HISTORY_RETENTION_MS = 30 * 24 * HOUR;
+export const HISTORY_MAX_EVENTS = 1000;
 export const TIMELINE_WINDOW_MS = 24 * HOUR;
 
 /**

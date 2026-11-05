@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- Inline, so Chrome knows about the crossfade before the page first renders. -->
+    <style>@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }</style>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Live board - Account Detector</title>
     <link rel="icon" href="icons/icon-32.png" />
@@ -15,7 +17,10 @@
           <img src="icons/icon-128.png" width="28" height="28" alt="" />
           <span class="brand-name">Account Detector</span>
         </div>
-        <button class="button check-all" id="check-all" type="button"><span id="check-all-label">Check all</span></button>
+        <div class="top-actions">
+          <a class="icon-button" id="open-settings" href="options.html" aria-label="Open settings" title="Settings: nicknames, alerts and history"></a>
+          <button class="button check-all" id="check-all" type="button"><span id="check-all-label">Check all</span></button>
+        </div>
       </header>
 
       <div class="heading">

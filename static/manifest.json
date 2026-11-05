@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Amazon Account Detector",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "See which Amazon account is signed in on every marketplace, live, without touching your tabs.",
   "minimum_chrome_version": "116",
-  "permissions": ["alarms", "cookies", "offscreen", "sidePanel", "storage"],
+  "permissions": ["alarms", "cookies", "notifications", "offscreen", "sidePanel", "storage"],
   "host_permissions": [
     "https://amazon.com/*",
     "https://www.amazon.com/*",
@@ -27,6 +27,7 @@
     }
   },
   "side_panel": { "default_path": "board.html?view=panel" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
   "omnibox": { "keyword": "amz" },
   "icons": {
     "16": "icons/icon-16.png",

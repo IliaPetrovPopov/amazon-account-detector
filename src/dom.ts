@@ -1,4 +1,4 @@
-import { monogram } from './identity';
+import { initials, monogram } from './identity';
 
 // Small DOM helpers. Everything is built with createElement and textContent, never from HTML strings.
 
@@ -38,6 +38,8 @@ const ICON_PATHS = {
   info: 'M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM8 7.5v3.5M8 5h.01',
   user: 'M8 8a2.75 2.75 0 1 0 0-5.5A2.75 2.75 0 0 0 8 8zM3 14c.7-2.6 2.7-4 5-4s4.3 1.4 5 4',
   history: 'M2 8a6 6 0 1 0 6-6 6.5 6.5 0 0 0-4.49 1.83L2 5.3M2 2v3.3h3.3M8 4.7V8l2.7 1.3',
+  settings: 'M2.5 5h2M7.5 5h6M2.5 11h6M11.5 11h2M6 3.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM10 9.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z',
+  download: 'M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
@@ -63,11 +65,12 @@ export function setIcon(host: HTMLElement, name: IconName): void {
 
 /**
  * Fills an avatar: the account's initials on its colour, or an outlined person when no account
- * is signed in. The colour arrives as a custom property so light and dark mode can share it.
+ * is signed in. A nickname gives the initials when it has any. The colour arrives as a custom
+ * property so light and dark mode can share it.
  */
-export function paintAvatar(host: HTMLElement, email: string | null, color: string | null): void {
-  const letters = email ? monogram(email) : '';
-  const key = `${email ?? ''}|${color ?? ''}`;
+export function paintAvatar(host: HTMLElement, email: string | null, color: string | null, name: string | null = null): void {
+  const letters = email ? (name && initials(name)) || monogram(email) : '';
+  const key = `${email ?? ''}|${color ?? ''}|${name ?? ''}`;
   if (host.dataset.key === key) return;
   host.dataset.key = key;
   host.classList.toggle('avatar-empty', !email);
@@ -76,10 +79,21 @@ export function paintAvatar(host: HTMLElement, email: string | null, color: stri
   host.replaceChildren(letters ? letters : icon('user'));
 }
 
-export function avatar(email: string | null, color: string | null, className = ''): HTMLSpanElement {
-  const host = el('span', `avatar${className ? ` ${className}` : ''}`);
+export function avatar(email: string | null, color: string | null, name: string | null = null): HTMLSpanElement {
+  const host = el('span', 'avatar');
   host.setAttribute('aria-hidden', 'true');
-  paintAvatar(host, email, color);
+  paintAvatar(host, email, color, name);
+  return host;
+}
+
+/**
+ * An account named in a sentence: the nickname over the email, or the email alone. Screen readers
+ * hear the two as "nickname, email".
+ */
+export function accountName(email: string, name: string | null, className = ''): HTMLSpanElement {
+  const host = el('span', `who${className ? ` ${className}` : ''}`);
+  if (name) host.append(el('span', 'who-name', name), el('span', 'sr-only', ', '), el('span', 'who-email', email));
+  else host.append(el('span', 'who-name', email));
   return host;
 }
 

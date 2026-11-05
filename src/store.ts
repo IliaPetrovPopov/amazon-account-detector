@@ -1,5 +1,5 @@
 import { appendHistory } from './history';
-import type { ColorSlots } from './identity';
+import { withName, type AccountNames, type ColorSlots } from './identity';
 import { MARKETPLACE_IDS, isMarketplaceId, type MarketplaceId } from './marketplaces';
 import { EMPTY_RECORD, type AuthRecord, type HistoryEvent } from './types';
 
@@ -7,6 +7,8 @@ import { EMPTY_RECORD, type AuthRecord, type HistoryEvent } from './types';
 
 export const SELECTED_KEY = 'selectedMarketplace';
 export const COLORS_KEY = 'accountColors';
+export const NAMES_KEY = 'accountNames';
+export const ALERTS_KEY = 'alertsEnabled';
 export const authKey = (id: MarketplaceId) => `auth:${id}`;
 export const pinKey = (id: MarketplaceId) => `pin:${id}`;
 export const historyKey = (id: MarketplaceId) => `history:${id}`;
@@ -46,7 +48,7 @@ export const pinStore = {
   },
 };
 
-/** Who was signed in when, kept for seven days. Written only by the service worker. */
+/** Who was signed in when, kept for 30 days. Written only by the service worker. */
 export const historyStore = {
   getAll: () => readAll<HistoryEvent[]>(historyKey, []),
   async record(id: MarketplaceId, record: AuthRecord, now: number): Promise<void> {
@@ -71,6 +73,32 @@ export const colorStore = {
   },
 };
 
+/** Nicknames for accounts. Written only from the Settings page. */
+export const nameStore = {
+  async get(): Promise<AccountNames> {
+    const found = await chrome.storage.local.get(NAMES_KEY);
+    return (found[NAMES_KEY] as AccountNames | undefined) ?? {};
+  },
+  /** Saves a cleaned nickname, or removes it when nothing is left after cleaning. Returns what was stored. */
+  async set(email: string, raw: string): Promise<AccountNames> {
+    const next = withName(await nameStore.get(), email, raw);
+    await chrome.storage.local.set({ [NAMES_KEY]: next });
+    return next;
+  },
+};
+
+/** Desktop alerts stay off until the person turns them on in Settings. */
+export const alertStore = {
+  async enabled(): Promise<boolean> {
+    const found = await chrome.storage.local.get(ALERTS_KEY);
+    return found[ALERTS_KEY] === true;
+  },
+  async set(on: boolean): Promise<void> {
+    if (on) await chrome.storage.local.set({ [ALERTS_KEY]: true });
+    else await chrome.storage.local.remove(ALERTS_KEY);
+  },
+};
+
 export async function loadSelectedMarketplace(): Promise<MarketplaceId> {
   const found = await chrome.storage.local.get(SELECTED_KEY);
   const value: unknown = found[SELECTED_KEY];
@@ -87,6 +115,7 @@ export function touchesAuthState(changedKeys: string[]): boolean {
     (key) =>
       key === SELECTED_KEY ||
       key === COLORS_KEY ||
+      key === NAMES_KEY ||
       key.startsWith('auth:') ||
       key.startsWith('pin:') ||
       key.startsWith('history:'),

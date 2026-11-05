@@ -17,7 +17,7 @@ export function escapeXml(text: string): string {
 
 function matches(row: BoardRowView, query: string): boolean {
   if (!query) return true;
-  const haystack = [row.code, row.domain, row.account, row.status].join(' ').toLowerCase();
+  const haystack = [row.code, row.domain, row.account, row.name ?? '', row.status].join(' ').toLowerCase();
   return query
     .toLowerCase()
     .split(/\s+/)
@@ -30,7 +30,8 @@ export function omniboxSuggestions(rows: BoardRowView[], query: string): Omnibox
   return rows
     .filter((row) => matches(row, query.trim()))
     .map((row) => {
-      const who = row.account ? `  ${escapeXml(row.account)}` : '';
+      const account = row.name ? `${escapeXml(row.name)} <dim>${escapeXml(row.account)}</dim>` : escapeXml(row.account);
+      const who = row.account ? `  ${account}` : '';
       const when = row.time ? `  <dim>checked ${row.time}</dim>` : '';
       return {
         content: row.domain,

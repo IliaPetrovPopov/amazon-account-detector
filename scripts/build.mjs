@@ -7,6 +7,7 @@ const options = {
     offscreen: 'src/offscreen.ts',
     popup: 'src/popup.ts',
     board: 'src/board.ts',
+    options: 'src/options.ts',
   },
   outdir: 'dist',
   bundle: true,

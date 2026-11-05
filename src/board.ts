@@ -1,11 +1,11 @@
 import { avatar, byId, el, icon, paintAvatar, prefersReducedMotion, settleIn } from './dom';
 import { timelineSegments, type TimelineSegment } from './history';
-import { accountColor, accountKey, type ColorSlots } from './identity';
+import { accountColor, accountKey, accountLabel, nameFor, type AccountNames, type ColorSlots } from './identity';
 import type { CheckRequest } from './messages';
 import { MARKETPLACE_IDS, MARKETPLACES, type MarketplaceId } from './marketplaces';
-import { authStore, colorStore, historyStore, pinStore, touchesAuthState } from './store';
+import { authStore, colorStore, historyStore, nameStore, pinStore, touchesAuthState } from './store';
 import { EMPTY_RECORD, type AuthRecord, type HistoryEvent } from './types';
-import { boardRow, boardSummary, clockTime, type BoardRowView } from './view';
+import { boardRow, boardSummary, clockTime, listOf, type BoardRowView } from './view';
 
 // The live board: every marketplace at once, in a tab or in Chrome's side panel. It updates as soon
 // as the service worker stores a new answer, for example after a sign-out in another tab.
@@ -22,6 +22,8 @@ interface Row {
   account: HTMLElement;
   avatar: HTMLElement;
   email: HTMLElement;
+  /** The email under a nickname. */
+  alt: HTMLElement;
   sub: HTMLElement;
   pill: HTMLElement;
   pillText: HTMLElement;
@@ -53,15 +55,10 @@ let history = Object.fromEntries(MARKETPLACE_IDS.map((id) => [id, [] as HistoryE
   HistoryEvent[]
 >;
 let colors: ColorSlots = {};
+let names: AccountNames = {};
 
 const colorOf = (email: string | null) => (email ? accountColor(colors, email) : null);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** "UK", "UK and IT", "UK, DE and IT". */
-function listOf(items: string[]): string {
-  if (items.length <= 1) return items.join('');
-  return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
-}
 
 /** A clock time, marked as yesterday when it was. */
 function when(ms: number, now: number): string {
@@ -102,9 +99,11 @@ function buildRows(): void {
 
     const rowAvatar = avatar(null, null);
     const email = el('span', 'account-email');
+    const alt = el('span', 'account-alt');
+    alt.hidden = true;
     const sub = el('span', 'account-sub');
     const accountText = el('span', 'account-text');
-    accountText.append(email, sub);
+    accountText.append(email, alt, sub);
     const account = el('div', 'cell-account');
     account.append(rowAvatar, accountText);
 
@@ -137,7 +136,7 @@ function buildRows(): void {
     element.append(market, account, status, timeline, actions);
     rowsHost.append(element);
 
-    const row: Row = { element, account, avatar: rowAvatar, email, sub, pill, pillText, freshness, track, check, pin, segments: [] };
+    const row: Row = { element, account, avatar: rowAvatar, email, alt, sub, pill, pillText, freshness, track, check, pin, segments: [] };
     rows.set(id, row);
 
     check.addEventListener('click', () => void requestCheck(id));
@@ -186,7 +185,8 @@ function renderTimeline(row: Row, events: HistoryEvent[], now: number): void {
     }),
   );
   const spans = row.segments.map(
-    (segment, index) => `${segment.email ?? 'signed out'} from ${span(segment, index === row.segments.length - 1, now)}`,
+    (segment, index) =>
+      `${segment.email ? accountLabel(names, segment.email) : 'signed out'} from ${span(segment, index === row.segments.length - 1, now)}`,
   );
   row.track.setAttribute('aria-label', spans.length ? `Last 24 hours: ${spans.join('; ')}` : 'No record in the last 24 hours');
 }
@@ -214,9 +214,12 @@ function showTooltip(row: Row, event: PointerEvent): void {
   }
   const now = Date.now();
   const who = el('div', 'tooltip-who');
-  if (segment.email) who.append(avatar(segment.email, colorOf(segment.email)), el('span', '', segment.email));
+  const name = nameFor(names, segment.email);
+  if (segment.email) who.append(avatar(segment.email, colorOf(segment.email), name), el('span', '', name ?? segment.email));
   else who.append('Signed out');
-  tooltip.replaceChildren(who, el('div', 'tooltip-when', span(segment, index === row.segments.length - 1, now)));
+  tooltip.replaceChildren(who);
+  if (segment.email && name) tooltip.append(el('div', 'tooltip-email', segment.email));
+  tooltip.append(el('div', 'tooltip-when', span(segment, index === row.segments.length - 1, now)));
   tooltip.hidden = false;
 
   const rect = row.track.getBoundingClientRect();
@@ -253,7 +256,7 @@ function accountLine(view: BoardRowView, record: AuthRecord): string {
 
 function renderRow(id: MarketplaceId, row: Row, now: number, reason: Reason): void {
   const record = records[id];
-  const settled = boardRow(record, MARKETPLACES[id], now, pins[id]);
+  const settled = boardRow(record, MARKETPLACES[id], now, pins[id], names);
   const isChecking = checking.has(id);
   const view: BoardRowView = isChecking ? { ...settled, freshness: 'Checking…' } : settled;
   const previous = row.view;
@@ -265,15 +268,18 @@ function renderRow(id: MarketplaceId, row: Row, now: number, reason: Reason): vo
   row.element.classList.toggle('is-off', !view.account);
   row.element.classList.toggle('is-dim', view.dim);
 
-  paintAvatar(row.avatar, view.account || null, colorOf(view.account || null));
-  row.email.textContent = accountLine(view, record);
-  row.email.title = view.account;
+  paintAvatar(row.avatar, view.account || null, colorOf(view.account || null), view.name);
+  row.email.textContent = view.name ?? accountLine(view, record);
+  row.email.title = view.account ? accountLabel(names, view.account) : '';
+  // With a nickname the email moves to its own line, so it is never hidden.
+  row.alt.textContent = view.name ? view.account : '';
+  row.alt.hidden = !view.name;
 
   row.sub.replaceChildren();
-  if (view.pinState === 'mismatch' && view.pin) row.sub.append(icon('pin'), el('span', '', `Expected ${view.pin}`));
+  if (view.pinState === 'mismatch' && view.pin) row.sub.append(icon('pin'), el('span', '', `Expected ${nameFor(names, view.pin) ?? view.pin}`));
   else if (view.pinState === 'match') row.sub.append(icon('pin'), el('span', '', 'Pinned'));
   row.sub.hidden = row.sub.childElementCount === 0;
-  row.sub.title = row.sub.textContent ?? '';
+  row.sub.title = view.pinState === 'mismatch' && view.pin ? `Expected ${accountLabel(names, view.pin)}` : (row.sub.textContent ?? '');
 
   row.pill.dataset.tone = view.tone;
   row.pillText.textContent = view.status;
@@ -285,10 +291,11 @@ function renderRow(id: MarketplaceId, row: Row, now: number, reason: Reason): vo
   const signedInEmail = record.status === 'signed_in' ? record.email : null;
   row.pin.disabled = !pins[id] && !signedInEmail;
   row.pin.setAttribute('aria-pressed', String(Boolean(pins[id])));
-  row.pin.title = pins[id]
-    ? `Pinned to ${pins[id]}. Click to unpin.`
+  const pinned = pins[id];
+  row.pin.title = pinned
+    ? `Pinned to ${accountLabel(names, pinned)}. Click to unpin.`
     : signedInEmail
-      ? `Expect ${signedInEmail} on ${view.domain}`
+      ? `Expect ${accountLabel(names, signedInEmail)} on ${view.domain}`
       : 'Sign in to pin an account';
 
   renderTimeline(row, history[id], now);
@@ -297,7 +304,7 @@ function renderRow(id: MarketplaceId, row: Row, now: number, reason: Reason): vo
   if (reason === 'live' && changed) {
     flash(row.element);
     settleIn(row.account);
-    announce.textContent = `${view.domain}: ${view.status}${view.account ? `, ${view.account}` : ''}`;
+    announce.textContent = `${view.domain}: ${view.status}${view.account ? `, ${accountLabel(names, view.account)}` : ''}`;
   }
 }
 
@@ -343,9 +350,12 @@ function renderAccounts(now: number): void {
           pinned.length ? `Pinned to ${listOf(pinned)}` : null,
         ].filter(Boolean);
         const where = facts.length ? `${facts.join('. ')}.` : 'Seen in the last 24 hours.';
+        const name = nameFor(names, email);
         const body = el('div');
-        body.append(el('p', 'account-name', email), el('p', 'account-where', where));
-        item.append(avatar(email, colorOf(email)), body);
+        body.append(el('p', 'account-name', name ?? email));
+        if (name) body.append(el('p', 'account-alt', email));
+        body.append(el('p', 'account-where', where));
+        item.append(avatar(email, colorOf(email), name), body);
         return item;
       }),
   );
@@ -365,11 +375,12 @@ function render(reason: Reason): void {
 }
 
 async function reload(): Promise<void> {
-  [records, pins, history, colors] = await Promise.all([
+  [records, pins, history, colors, names] = await Promise.all([
     authStore.getAll(),
     pinStore.getAll(),
     historyStore.getAll(),
     colorStore.get(),
+    nameStore.get(),
   ]);
 }
 
@@ -406,6 +417,8 @@ async function init(): Promise<void> {
   buildRows();
   buildAxis();
   checkAllButton.prepend(icon('refresh'));
+  // A plain link: Settings opens in this tab or side panel, with a crossfade between the pages.
+  byId('open-settings').append(icon('settings'));
   await reload();
   render('initial');
 

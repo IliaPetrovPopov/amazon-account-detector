@@ -83,6 +83,58 @@ export function monogram(email: string): string {
     .toLocaleUpperCase();
 }
 
+/**
+ * One or two characters for an avatar from a nickname: "Main buyer" is MB, "Buyer 3" is B3.
+ * Digits count here, unlike in emails, because people number their accounts.
+ */
+export function initials(name: string): string {
+  return name
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => Array.from(word)[0] ?? '')
+    .join('')
+    .toLocaleUpperCase();
+}
+
+/** Nicknames the person gave accounts, by normalised email. Stored, and never sent anywhere. */
+export type AccountNames = Record<string, string>;
+
+export const NAME_MAX_LENGTH = 40;
+
+// Control characters, and the direction marks and overrides that make text display in another order than it is stored.
+const UNSAFE_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+
+/** A nickname as it is stored: one line, single spaces, at most 40 characters. Empty means no nickname. */
+export function cleanName(raw: string): string {
+  const text = raw.replace(/\s+/g, ' ').replace(UNSAFE_CHARACTERS, '').replace(/ {2,}/g, ' ').trim();
+  // Counted in characters as people see them, so an emoji or an accented letter is never cut in half.
+  const characters = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((part) => part.segment);
+  return characters.slice(0, NAME_MAX_LENGTH).join('').trim();
+}
+
+/** The account's nickname, or null when it has none. */
+export function nameFor(names: AccountNames, email: string | null | undefined): string | null {
+  if (!email) return null;
+  return names[accountKey(email)] || null;
+}
+
+/** "Main buyer (alice@example.com)", or the email alone. Wherever an account is named in a sentence, the email stays. */
+export function accountLabel(names: AccountNames, email: string): string {
+  const name = nameFor(names, email);
+  return name ? `${name} (${email})` : email;
+}
+
+/** The names with this account's nickname set, or removed when the cleaned text is empty. */
+export function withName(names: AccountNames, email: string, raw: string): AccountNames {
+  const key = accountKey(email);
+  const name = cleanName(raw);
+  const next = { ...names };
+  delete next[key];
+  if (name) next[key] = name;
+  return next;
+}
+
 export type PinState = 'none' | 'match' | 'mismatch';
 
 /** Whether the signed-in account is the one pinned for this marketplace. */

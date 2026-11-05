@@ -8,8 +8,8 @@ export interface AuthServiceDeps {
     set(id: MarketplaceId, record: AuthRecord): Promise<void>;
   };
   check(m: Marketplace, previous: AuthRecord, options: CheckOptions): Promise<AuthRecord>;
-  /** Called after a new record is stored, for example to extend the session history. */
-  onStored?(id: MarketplaceId, record: AuthRecord): Promise<void>;
+  /** Called after a new record is stored, with the one it replaced, for example to extend the session history. */
+  onStored?(id: MarketplaceId, record: AuthRecord, previous: AuthRecord): Promise<void>;
   /** Amazon can change auth cookies several times within a moment, so wait for them to settle. */
   settleMs?: number;
 }
@@ -31,7 +31,7 @@ export function createAuthService({ store, check, onStored, settleMs = 1500 }: A
     if (generationOf(id) !== startedIn) return previous;
     if (next !== previous) {
       await store.set(id, next);
-      await onStored?.(id, next).catch((error) => console.warn('After-store step failed', id, error));
+      await onStored?.(id, next, previous).catch((error) => console.warn('After-store step failed', id, error));
     }
     return next;
   }

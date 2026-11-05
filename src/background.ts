@@ -1,14 +1,15 @@
+import { alertFor, alertId, marketplaceOfAlert } from './alerts';
 import { refreshBadge } from './badge';
 import { checkMarketplace, type CheckDeps } from './check';
 import { accountsInOrder, assignColors, sameColors } from './identity';
 import type { CheckRequest } from './messages';
-import { MARKETPLACES, MARKETPLACE_IDS, homeUrl, isMarketplaceId, type Marketplace } from './marketplaces';
+import { MARKETPLACES, MARKETPLACE_IDS, homeUrl, isMarketplaceId, switcherUrl, type Marketplace, type MarketplaceId } from './marketplaces';
 import { extractEmailOffscreen } from './offscreen-client';
 import { omniboxSuggestions } from './omnibox';
 import { createAuthService } from './service';
 import { sessionSignal } from './session-signal';
-import { authStore, colorStore, historyStore, pinStore, touchesAccounts, touchesAuthState } from './store';
-import type { PageResponse } from './types';
+import { alertStore, authStore, colorStore, historyStore, nameStore, pinStore, touchesAccounts, touchesAuthState } from './store';
+import type { AuthRecord, PageResponse } from './types';
 import { boardRow } from './view';
 
 const REFRESH_ALARM = 'refresh-auth';
@@ -75,12 +76,28 @@ function syncColors(): Promise<void> {
   return colorsDone;
 }
 
+/** A desktop alert for a sign-out or the wrong account, when the person turned alerts on. */
+async function alertIfNeeded(id: MarketplaceId, previous: AuthRecord, record: AuthRecord): Promise<void> {
+  if (!(await alertStore.enabled())) return;
+  const [pin, names] = await Promise.all([pinStore.get(id), nameStore.get()]);
+  const alert = alertFor(MARKETPLACES[id], previous, record, pin, names);
+  if (!alert) return;
+  await chrome.notifications.create(alertId(MARKETPLACES[id]), {
+    type: 'basic',
+    iconUrl: 'icons/icon-128.png',
+    title: alert.title,
+    message: alert.message,
+    priority: 1,
+  });
+}
+
 const service = createAuthService({
   store: authStore,
   check: (m, previous, options) => checkMarketplace(m, previous, options, checkDeps),
-  onStored: async (id, record) => {
+  onStored: async (id, record, previous) => {
     await historyStore.record(id, record, Date.now());
     await syncColors();
+    await alertIfNeeded(id, previous, record).catch((error) => console.warn('Alert failed', id, error));
   },
 });
 
@@ -126,9 +143,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.omnibox.setDefaultSuggestion({ description: 'Show which Amazon account is signed in on each marketplace' });
 
 chrome.omnibox.onInputChanged.addListener((text, suggest) => {
-  void Promise.all([authStore.getAll(), pinStore.getAll()]).then(([records, pins]) => {
+  void Promise.all([authStore.getAll(), pinStore.getAll(), nameStore.get()]).then(([records, pins, names]) => {
     const now = Date.now();
-    const rows = MARKETPLACE_IDS.map((id) => boardRow(records[id], MARKETPLACES[id], now, pins[id]));
+    const rows = MARKETPLACE_IDS.map((id) => boardRow(records[id], MARKETPLACES[id], now, pins[id], names));
     suggest(omniboxSuggestions(rows, text));
   });
 });
@@ -138,6 +155,13 @@ chrome.omnibox.onInputEntered.addListener((text, disposition) => {
   const url = marketplace ? homeUrl(marketplace) : chrome.runtime.getURL('board.html');
   if (disposition === 'currentTab') void chrome.tabs.update({ url });
   else void chrome.tabs.create({ url, active: disposition === 'newForegroundTab' });
+});
+
+// Clicking an alert opens that marketplace's sign-in page, the same place the popup's button goes.
+chrome.notifications.onClicked.addListener((notificationId) => {
+  void chrome.notifications.clear(notificationId);
+  const id = marketplaceOfAlert(notificationId);
+  if (id) void chrome.tabs.create({ url: switcherUrl(MARKETPLACES[id]) });
 });
 
 chrome.cookies.onChanged.addListener((change) => {

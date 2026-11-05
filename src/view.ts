@@ -1,5 +1,5 @@
 import { identityOf, sameAccount } from './history';
-import { pinState, type PinState } from './identity';
+import { accountLabel, nameFor, pinState, type AccountNames, type PinState } from './identity';
 import { homeUrl, switcherUrl, type Marketplace, type MarketplaceId } from './marketplaces';
 import type { AuthRecord, CheckProblem } from './types';
 
@@ -45,6 +45,24 @@ export function formatAge(ms: number): string {
 export function clockTime(ms: number): string {
   const date = new Date(ms);
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
+
+/** "today 14:02", "yesterday 09:15" or "3 Nov 09:15". */
+export function dayAndTime(ms: number, now: number): string {
+  if (sameDay(ms, now)) return `today ${clockTime(ms)}`;
+  if (sameDay(ms, now - DAY)) return `yesterday ${clockTime(ms)}`;
+  const date = new Date(ms);
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${clockTime(ms)}`;
+}
+
+/** "UK", "UK and IT", "UK, DE and IT". */
+export function listOf(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 }
 
 function noticeFor(problem: CheckProblem | null, m: Marketplace): string | null {
@@ -135,23 +153,28 @@ export function describe(
 }
 
 export interface Hero {
-  /** The large line: the part of the email before the @, or the state. */
+  /** The large line: the nickname, the part of the email before the @, or the state. */
   primary: string;
-  /** The small line under it. */
+  /** The small line under it. With a nickname, the whole email, so the email always shows. */
   secondary: string;
   /** The account, when one is signed in and Amazon showed it. */
   email: string | null;
+  /** The account's nickname, if it has one. */
+  name: string | null;
 }
 
 /** The popup's main lines. The email is split at the @, so the part that tells accounts apart leads. */
-export function heroText(record: AuthRecord, m: Marketplace): Hero {
+export function heroText(record: AuthRecord, m: Marketplace, names: AccountNames = {}): Hero {
   if (record.status === 'signed_in' && record.email) {
+    const name = nameFor(names, record.email);
+    if (name) return { primary: name, secondary: record.email, email: record.email, name };
     const [local, domain] = emailLines(record.email);
-    return { primary: local, secondary: domain || m.domain, email: record.email };
+    return { primary: local, secondary: domain || m.domain, email: record.email, name: null };
   }
-  if (record.status === 'signed_in') return { primary: 'Signed in', secondary: 'Amazon did not show the email', email: null };
-  if (record.status === 'signed_out') return { primary: 'Not signed in', secondary: m.domain, email: null };
-  return { primary: record.problem ? 'No answer from Amazon' : 'Not checked yet', secondary: m.domain, email: null };
+  const none = { email: null, name: null };
+  if (record.status === 'signed_in') return { primary: 'Signed in', secondary: 'Amazon did not show the email', ...none };
+  if (record.status === 'signed_out') return { primary: 'Not signed in', secondary: m.domain, ...none };
+  return { primary: record.problem ? 'No answer from Amazon' : 'Not checked yet', secondary: m.domain, ...none };
 }
 
 /** What the popup remembers about a marketplace between looks: who was signed in, or null while signed out. */
@@ -180,6 +203,8 @@ export interface BoardRowView {
   tone: Tone;
   /** The signed-in account, or empty. */
   account: string;
+  /** The signed-in account's nickname, if it has one. */
+  name: string | null;
   /** One or two words for the status column. */
   status: string;
   /** Faded: not current. */
@@ -193,10 +218,16 @@ export interface BoardRowView {
   label: string;
 }
 
-export function boardRow(record: AuthRecord, m: Marketplace, now: number, pin: string | null = null): BoardRowView {
+export function boardRow(
+  record: AuthRecord,
+  m: Marketplace,
+  now: number,
+  pin: string | null = null,
+  names: AccountNames = {},
+): BoardRowView {
   const view = describe(record, m, now, false, pin);
   const email = record.status === 'signed_in' ? record.email : null;
-  const pinNote = view.pin.state === 'mismatch' ? `pinned account is ${pin}` : null;
+  const pinNote = view.pin.state === 'mismatch' && pin ? `pinned account is ${accountLabel(names, pin)}` : null;
   return {
     id: m.id,
     code: m.code,
@@ -204,13 +235,14 @@ export function boardRow(record: AuthRecord, m: Marketplace, now: number, pin: s
     domain: m.domain,
     tone: view.tone,
     account: email ?? '',
+    name: nameFor(names, email),
     status: view.status,
     dim: isLastKnown(record, now),
     freshness: view.freshness,
     time: view.time,
     pin,
     pinState: view.pin.state,
-    label: [m.domain, view.headline, email, pinNote, view.freshness].filter(Boolean).join(', '),
+    label: [m.domain, view.headline, email && accountLabel(names, email), pinNote, view.freshness].filter(Boolean).join(', '),
   };
 }
 
@@ -236,10 +268,16 @@ const BADGE_COLORS: Record<Tone, { color: string; textColor: string }> = {
 };
 
 /** The toolbar badge: the chosen marketplace's code, coloured by its state. */
-export function badgeView(record: AuthRecord, m: Marketplace, now: number, pin: string | null = null): BadgeView {
+export function badgeView(
+  record: AuthRecord,
+  m: Marketplace,
+  now: number,
+  pin: string | null = null,
+  names: AccountNames = {},
+): BadgeView {
   const view = describe(record, m, now, false, pin);
-  const who = record.status === 'signed_in' && record.email ? ` as ${record.email}` : '';
-  const pinNote = view.pin.state === 'mismatch' ? `\nPinned account: ${pin}` : '';
+  const who = record.status === 'signed_in' && record.email ? ` as ${accountLabel(names, record.email)}` : '';
+  const pinNote = view.pin.state === 'mismatch' && pin ? `\nPinned account: ${accountLabel(names, pin)}` : '';
   return {
     text: m.code,
     ...BADGE_COLORS[view.tone],

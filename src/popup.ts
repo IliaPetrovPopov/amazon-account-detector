@@ -1,9 +1,9 @@
-import { avatar, byId, el, icon, memory, paintAvatar, prefersReducedMotion, setIcon, setText, settleIn } from './dom';
-import { accountColor, type ColorSlots } from './identity';
+import { accountName, avatar, byId, el, icon, memory, paintAvatar, prefersReducedMotion, setIcon, setText, settleIn } from './dom';
+import { accountColor, accountLabel, nameFor, type AccountNames, type ColorSlots } from './identity';
 import { comboKey, typeahead } from './listbox';
 import type { CheckRequest } from './messages';
 import { MARKETPLACE_IDS, MARKETPLACES, type MarketplaceId } from './marketplaces';
-import { authStore, colorStore, loadSelectedMarketplace, pinStore, saveSelectedMarketplace, touchesAuthState } from './store';
+import { authStore, colorStore, loadSelectedMarketplace, nameStore, pinStore, saveSelectedMarketplace, touchesAuthState } from './store';
 import { EMPTY_RECORD, type AuthRecord } from './types';
 import { boardRow, changeNote, describe, emailLines, heroText, lookOf, type Look } from './view';
 
@@ -62,6 +62,7 @@ let selected: MarketplaceId = 'com';
 let records = Object.fromEntries(MARKETPLACE_IDS.map((id) => [id, EMPTY_RECORD])) as Record<MarketplaceId, AuthRecord>;
 let pins = Object.fromEntries(MARKETPLACE_IDS.map((id) => [id, null])) as Record<MarketplaceId, string | null>;
 let colors: ColorSlots = {};
+let names: AccountNames = {};
 const checking = new Set<MarketplaceId>();
 /** Changes that happened while the popup was closed, found when it opened. */
 let notes: Partial<Record<MarketplaceId, Note>> = {};
@@ -201,15 +202,16 @@ function renderCombo(now: number): void {
   for (const id of MARKETPLACE_IDS) {
     const option = options.get(id);
     if (!option) continue;
-    const row = boardRow(records[id], MARKETPLACES[id], now, pins[id]);
+    const row = boardRow(records[id], MARKETPLACES[id], now, pins[id], names);
     const email = row.account || null;
     option.element.setAttribute('aria-selected', String(id === selected));
     option.element.setAttribute('aria-label', `${row.country}, ${row.label}`);
     option.element.dataset.tone = row.tone;
     option.dot.dataset.tone = row.tone;
     option.avatar.hidden = email === null;
-    paintAvatar(option.avatar, email, colorOf(email));
-    option.account.textContent = email ? emailLines(email)[0] : row.status;
+    paintAvatar(option.avatar, email, colorOf(email), row.name);
+    // A nickname, or the part of the email that tells accounts apart. The whole label is read out.
+    option.account.textContent = email ? (row.name ?? emailLines(email)[0]) : row.status;
     option.element.querySelector('.code')?.classList.toggle('is-current', id === selected);
     if (id === selected) comboDot.dataset.tone = row.tone;
   }
@@ -224,15 +226,16 @@ function render(reason: Reason): void {
   const pin = pins[selected];
   const isChecking = checking.has(selected);
   const view = describe(record, m, now, isChecking, pin);
-  const hero = heroText(record, m);
+  const hero = heroText(record, m, names);
 
   renderCombo(now);
 
-  paintAvatar(avatarHost, hero.email, colorOf(hero.email));
+  paintAvatar(avatarHost, hero.email, colorOf(hero.email), hero.name);
   primary.textContent = hero.primary;
   secondary.textContent = hero.secondary;
   identity.classList.toggle('is-faded', hero.email !== null && view.accountMuted);
-  account.textContent = `${m.domain}: ${view.headline}${hero.email ? `, ${hero.email}` : ''}`;
+  identity.classList.toggle('has-name', hero.name !== null);
+  account.textContent = `${m.domain}: ${view.headline}${hero.email ? `, ${accountLabel(names, hero.email)}` : ''}`;
 
   statusPill.dataset.tone = view.tone;
   statusText.textContent = view.status;
@@ -251,14 +254,18 @@ function render(reason: Reason): void {
   if (note) {
     changeText.textContent = note.text;
     changeBefore.hidden = !note.before;
-    if (note.before) changeBefore.replaceChildren('Before:', avatar(note.before, colorOf(note.before)), el('span', '', note.before));
+    if (note.before) {
+      const name = nameFor(names, note.before);
+      changeBefore.replaceChildren('Before:', avatar(note.before, colorOf(note.before), name), accountName(note.before, name));
+    }
   }
 
   const mismatch = view.pin.state === 'mismatch' && view.pin.email;
   alertBox.hidden = !mismatch;
   if (mismatch && view.pin.email) {
     alertText.textContent = `${m.domain} is pinned to`;
-    alertWho.replaceChildren(avatar(view.pin.email, colorOf(view.pin.email)), el('span', 'alert-email', view.pin.email));
+    const name = nameFor(names, view.pin.email);
+    alertWho.replaceChildren(avatar(view.pin.email, colorOf(view.pin.email), name), accountName(view.pin.email, name, 'alert-email'));
   }
 
   noticeBox.hidden = view.notice === null;
@@ -295,7 +302,7 @@ function render(reason: Reason): void {
 }
 
 async function reload(): Promise<void> {
-  [records, pins, colors] = await Promise.all([authStore.getAll(), pinStore.getAll(), colorStore.get()]);
+  [records, pins, colors, names] = await Promise.all([authStore.getAll(), pinStore.getAll(), colorStore.get(), nameStore.get()]);
 }
 
 async function requestCheck(id: MarketplaceId, force: boolean): Promise<void> {
@@ -328,6 +335,7 @@ function choose(id: MarketplaceId): void {
 function buildTools(): void {
   byId('open-board').append(icon('board'));
   byId('open-panel').append(icon('panel'));
+  byId('open-settings').append(icon('settings'));
   byId('combo-chevron').append(icon('chevron'));
   byId('change-icon').append(icon('history'));
   byId('alert-icon').append(icon('alert'));
@@ -338,6 +346,10 @@ function buildTools(): void {
 
   byId('open-board').addEventListener('click', () => {
     void chrome.tabs.create({ url: chrome.runtime.getURL('board.html') }).then(() => window.close());
+  });
+
+  byId('open-settings').addEventListener('click', () => {
+    void chrome.runtime.openOptionsPage().then(() => window.close());
   });
 
   // sidePanel.open needs the click's user gesture, so the window id is looked up in advance.
