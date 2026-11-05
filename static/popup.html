@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Amazon Account Detector</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <img class="bar-mark" src="icons/icon-48.png" width="22" height="22" alt="" />
+      <span class="bar-name">Account Detector</span>
+      <button class="icon-button" id="open-board" type="button" aria-label="Open the live board in a tab" title="Open the live board in a tab"></button>
+      <button class="icon-button" id="open-panel" type="button" aria-label="Open the live board in the side panel" title="Open the live board in the side panel"></button>
+    </header>
+
+    <main class="content">
+      <div class="select" id="select">
+        <span class="sr-only" id="select-label">Marketplace</span>
+        <div
+          class="select-trigger"
+          id="combo"
+          role="combobox"
+          tabindex="0"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="listbox"
+          aria-labelledby="select-label combo-value"
+        >
+          <span class="code is-current" id="combo-code" aria-hidden="true"></span>
+          <span class="select-text" id="combo-value">
+            <span class="select-name" id="combo-name"></span>
+            <span class="select-domain" id="combo-domain"></span>
+          </span>
+          <span class="dot" id="combo-dot" aria-hidden="true"></span>
+          <span class="select-chevron" id="combo-chevron" aria-hidden="true"></span>
+        </div>
+        <ul class="select-list" id="listbox" role="listbox" aria-labelledby="select-label" tabindex="-1" hidden></ul>
+      </div>
+
+      <section class="identity" id="identity">
+        <span class="avatar avatar-hero" id="avatar" aria-hidden="true"></span>
+        <div class="identity-text" aria-hidden="true">
+          <p class="identity-primary" id="primary"></p>
+          <p class="identity-secondary" id="secondary"></p>
+        </div>
+        <button class="icon-button" id="copy" type="button" aria-label="Copy email" title="Copy email" hidden></button>
+        <p class="sr-only" id="account"></p>
+      </section>
+
+      <div class="status-row">
+        <span class="pill" id="status" data-tone="off"><span class="dot" aria-hidden="true"></span><span id="status-text"></span></span>
+        <span class="freshness" id="freshness"></span>
+      </div>
+
+      <div class="callout callout-info" id="change" hidden>
+        <span class="change-icon" id="change-icon" aria-hidden="true"></span>
+        <div>
+          <p class="callout-title" id="change-text"></p>
+          <p class="change-before" id="change-before" hidden></p>
+        </div>
+      </div>
+
+      <div class="callout callout-alert" id="alert" hidden>
+        <span class="alert-icon" id="alert-icon" aria-hidden="true"></span>
+        <div>
+          <p class="callout-title">Not the pinned account</p>
+          <p class="alert-text" id="alert-text"></p>
+          <p class="alert-who" id="alert-who"></p>
+          <button class="text-button" id="repin" type="button">Pin this account instead</button>
+        </div>
+      </div>
+
+      <div class="callout callout-warn" id="notice-box" hidden>
+        <span class="notice-icon" id="notice-icon" aria-hidden="true"></span>
+        <p id="notice"></p>
+      </div>
+
+      <a class="button button-primary action" id="action" target="_blank" rel="noreferrer" hidden></a>
+
+      <div class="actions">
+        <button class="button" id="check" type="button"><span id="check-label">Check now</span></button>
+        <button class="button" id="pin" type="button" aria-pressed="false" hidden><span id="pin-label">Pin account</span></button>
+      </div>
+    </main>
+
+    <p class="sr-only" id="announce" aria-live="polite"></p>
+    <script src="popup.js"></script>
+  </body>
+</html>
