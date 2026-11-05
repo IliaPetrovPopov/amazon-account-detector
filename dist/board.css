@@ -1,0 +1,478 @@
+body {
+  min-height: 100vh;
+  background: var(--canvas);
+  font-size: 14px;
+}
+
+.page {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 28px 40px 40px;
+}
+
+/* ---------- Header ---------- */
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img {
+  border-radius: 7px;
+}
+
+.brand-name {
+  font: 600 15px/1 var(--font-display);
+  letter-spacing: -0.005em;
+}
+
+.check-all {
+  min-height: 38px;
+}
+
+.heading {
+  margin: 34px 0 18px;
+}
+
+h1 {
+  margin: 0;
+  font: 600 26px/1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.summary {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 14.5px;
+}
+
+/* ---------- The table ---------- */
+
+.sheet {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(22 32 59 / 0.04), 0 8px 24px -16px rgb(22 32 59 / 0.18);
+}
+
+.layout-wide .table-head,
+.layout-wide .row,
+.layout-wide .table-foot {
+  display: grid;
+  grid-template-columns:
+    minmax(176px, 0.95fr)
+    minmax(230px, 1.55fr)
+    minmax(168px, 0.9fr)
+    minmax(200px, 1.45fr)
+    72px;
+  column-gap: 24px;
+  align-items: center;
+  padding: 0 20px;
+}
+
+.table-head {
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-weight: 550;
+  font-size: 12.5px;
+}
+.layout-narrow .table-head {
+  display: none;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  position: relative;
+  min-height: 72px;
+  border-bottom: 1px solid var(--border);
+}
+.layout-wide .row {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.row:hover {
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+
+/* The wrong account: a red edge on the row, so it stands out at a glance. */
+.row[data-tone='alert'] {
+  background: color-mix(in srgb, var(--alert-tint) 55%, transparent);
+  box-shadow: inset 3px 0 0 var(--alert);
+}
+
+.cell-market,
+.cell-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.market-text,
+.account-text {
+  display: grid;
+  min-width: 0;
+}
+
+.market-name {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.market-domain,
+.account-sub,
+.status-sub {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.account-email {
+  overflow: hidden;
+  font-weight: 550;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.account-sub .icon {
+  width: 13px;
+  height: 13px;
+}
+.account-sub > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row[data-tone='alert'] .account-sub {
+  color: var(--alert-text);
+}
+
+.row.is-off .account-email {
+  color: var(--text-2);
+  font-weight: 450;
+}
+.row.is-dim .account-email {
+  color: var(--text-2);
+}
+.row.is-dim .cell-account .avatar:not(.avatar-empty) {
+  opacity: 0.6;
+}
+
+.cell-account .avatar {
+  --size: 34px;
+}
+
+.cell-status {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.status-sub {
+  font-feature-settings: 'tnum' 1;
+}
+
+.cell-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* ---------- Timeline ---------- */
+
+.cell-timeline {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  cursor: default;
+}
+
+.segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  border-right: 2px solid var(--surface);
+  border-radius: 3px;
+  background: var(--segment-color);
+  transition: opacity 120ms;
+}
+.segment:last-child {
+  border-right: 0;
+}
+.segment.out {
+  background: repeating-linear-gradient(135deg, var(--hatch) 0 1.5px, transparent 1.5px 4.5px);
+}
+.segment.out.is-short {
+  background: var(--hatch);
+}
+.track.is-hovering .segment:not(.is-hover) {
+  opacity: 0.4;
+}
+
+.table-foot {
+  min-height: 48px;
+}
+.layout-narrow .table-foot {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  grid-column: 1 / 4;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.layout-narrow .key {
+  grid-column: auto;
+}
+
+.key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.key-swatch {
+  width: 18px;
+  height: 8px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.key-out {
+  background: repeating-linear-gradient(135deg, var(--hatch) 0 1.5px, transparent 1.5px 4.5px);
+}
+.key-none {
+  background: var(--surface-2);
+}
+
+.axis {
+  position: relative;
+  height: 16px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-feature-settings: 'tnum' 1;
+}
+.axis span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.axis span:first-child {
+  transform: none;
+}
+.axis span:last-child {
+  transform: translateX(-100%);
+}
+
+/* ---------- Narrow: the side panel and small windows ---------- */
+
+.layout-narrow .page {
+  padding: 16px 14px 24px;
+}
+.layout-narrow .brand-name {
+  font-size: 14px;
+}
+.layout-narrow .brand img {
+  width: 24px;
+  height: 24px;
+}
+.layout-narrow .check-all {
+  min-height: 34px;
+  padding: 0 12px;
+}
+.layout-narrow .heading {
+  margin: 20px 0 12px;
+}
+.layout-narrow h1 {
+  font-size: 20px;
+}
+.layout-narrow .summary {
+  font-size: 13px;
+}
+.layout-narrow .sheet {
+  border-radius: 14px;
+}
+
+.layout-narrow .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'market actions'
+    'account account'
+    'status status'
+    'timeline timeline';
+  gap: 10px 8px;
+  padding: 14px 16px;
+}
+.layout-narrow .cell-market {
+  grid-area: market;
+}
+.layout-narrow .cell-actions {
+  grid-area: actions;
+  margin-right: -6px;
+}
+.layout-narrow .cell-account {
+  grid-area: account;
+}
+.layout-narrow .cell-status {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.layout-narrow .cell-timeline {
+  grid-area: timeline;
+}
+.layout-narrow .cell-account .avatar {
+  --size: 30px;
+}
+.layout-narrow .table-foot .axis {
+  width: 100%;
+}
+
+/* ---------- Accounts ---------- */
+
+.accounts {
+  margin-top: 32px;
+}
+
+.section-title {
+  margin: 0 0 12px;
+  font: 600 16px/1.3 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.account-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.layout-narrow .account-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.account .avatar {
+  --size: 34px;
+}
+
+.account-name {
+  overflow-wrap: anywhere;
+  font-weight: 550;
+  line-height: 1.35;
+}
+
+.account-where {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.accounts-empty {
+  color: var(--text-2);
+}
+
+.foot {
+  margin-top: 36px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.foot p {
+  max-width: 70ch;
+}
+
+/* ---------- Timeline tooltip ---------- */
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  display: grid;
+  gap: 3px;
+  max-width: 300px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  font-size: 12.5px;
+  pointer-events: none;
+}
+
+.tooltip-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.tooltip-who .avatar {
+  --size: 18px;
+}
+
+.tooltip-when {
+  color: var(--text-2);
+  font-feature-settings: 'tnum' 1;
+}
+
+/* A highlight behind the content that fades out when a row changes (animated from board.ts). */
+.row {
+  isolation: isolate;
+}
+.row::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--surface-3);
+  opacity: 0;
+  pointer-events: none;
+}

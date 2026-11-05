@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live board - Account Detector</title>
+    <link rel="icon" href="icons/icon-32.png" />
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="board.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <div class="brand">
+          <img src="icons/icon-128.png" width="28" height="28" alt="" />
+          <span class="brand-name">Account Detector</span>
+        </div>
+        <button class="button check-all" id="check-all" type="button"><span id="check-all-label">Check all</span></button>
+      </header>
+
+      <div class="heading">
+        <h1>Live board</h1>
+        <p class="summary" id="summary"></p>
+      </div>
+
+      <section class="sheet" aria-labelledby="sheet-title">
+        <h2 class="sr-only" id="sheet-title">Marketplaces</h2>
+        <div class="table-head" aria-hidden="true">
+          <span>Marketplace</span>
+          <span>Account</span>
+          <span>Status</span>
+          <span>Last 24 hours</span>
+        </div>
+        <ul class="rows" id="rows"></ul>
+        <div class="table-foot" aria-hidden="true">
+          <p class="key">
+            <span class="key-item"><span class="key-swatch key-out"></span>Signed out</span>
+            <span class="key-item"><span class="key-swatch key-none"></span>No record yet</span>
+          </p>
+          <div class="axis" id="axis"></div>
+        </div>
+      </section>
+
+      <section class="accounts" aria-labelledby="accounts-title">
+        <h2 class="section-title" id="accounts-title">Accounts</h2>
+        <ul class="account-list" id="accounts"></ul>
+      </section>
+
+      <footer class="foot">
+        <p>Rows update within seconds when you sign in, sign out or switch accounts in any tab. Nothing leaves your browser except the checks sent to Amazon.</p>
+      </footer>
+    </div>
+
+    <div class="tooltip" id="tooltip" aria-hidden="true" hidden></div>
+    <p class="sr-only" id="announce" aria-live="polite"></p>
+    <script src="board.js"></script>
+  </body>
+</html>
